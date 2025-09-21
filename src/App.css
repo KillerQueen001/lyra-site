@@ -1,0 +1,234 @@
+/* Reset */
+* { box-sizing: border-box; }
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #0f0f12;
+  color: #eaeaea;
+}
+
+/* Navbar */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: #111;
+}
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-logo-icon {
+  height: 36px;
+  width: auto;
+}
+.logo-text {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 6px #9b5de5, 0 0 12px #9b5de5;
+}
+.nav-links {
+  list-style: none;
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+}
+.nav-links a {
+  color: inherit;
+  text-decoration: none;
+  transition: 0.2s;
+}
+.nav-links a:hover {
+  color: #9b5de5;
+}
+
+/* Hero Section */
+.hero {
+  position: relative;
+  min-height: 70vh;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: center;
+  padding-bottom: 40px;
+  overflow: hidden;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+}
+
+/* Video */
+.hero-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;        /* genişliği tam doldur */
+  height: auto;       /* boy serbest */
+  z-index: 0;
+  object-fit: cover;  /* üstten taşabilir */
+}
+
+/* Ses Butonu */
+.mute-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 5;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.mute-btn:hover {
+  background: rgba(0,0,0,0.8);
+}
+
+/* Info Bar */
+.hero-info-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  background: rgba(0,0,0,0.65);
+  padding: 30px 40px;
+  border-radius: 16px;
+  max-width: 1400px;
+  width: 95%;
+  margin: 0 auto;
+}
+
+.hero-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.group-logo {
+  height: 90px;
+  width: auto;
+  object-fit: contain;
+}
+.group-name {
+  height: 60px;
+  object-fit: contain;
+}
+
+.hero-middle {
+  flex: 1;
+  text-align: left;
+}
+.hero-middle h1 {
+  margin: 0 0 12px;
+  font-size: 2rem;
+  color: #fff;
+  text-shadow: 0 0 6px #9b5de5;
+}
+.hero-middle p {
+  margin: 0;
+  color: #ddd;
+  font-size: 1.2rem;
+}
+
+.hero-right {
+  display: flex;
+  gap: 16px;
+}
+.hero-right button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(90deg, #9b5de5, #c77dff);
+  color: white;
+  font-weight: bold;
+  font-size: 1.1rem;
+  transition: 0.3s;
+}
+.hero-right button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px #9b5de5;
+}
+
+/* Arrows */
+.arrow {
+  --arrow-size: 2.5rem;
+  --arrow-color: rgb(255, 255, 255);
+  --arrow-color-hover: rgba(255, 255, 255, 0.7);
+
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  width: var(--arrow-size);
+  height: var(--arrow-size);
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 3;
+}
+.arrow::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  box-sizing: border-box;
+  display: inline-block;
+  width: calc(var(--arrow-size) * 0.7071);
+  height: calc(var(--arrow-size) * 0.7071);
+  border-top: calc(var(--arrow-size) / 5) solid var(--arrow-color);
+}
+.arrow.left::after {
+  left: calc(var(--arrow-size) / 5);
+  border-left: calc(var(--arrow-size) / 5) solid var(--arrow-color);
+  transform-origin: top left;
+  transform: rotate(-45deg);
+}
+.arrow.right::after {
+  right: calc(var(--arrow-size) / 5);
+  border-right: calc(var(--arrow-size) / 5) solid var(--arrow-color);
+  transform-origin: top right;
+  transform: rotate(45deg);
+}
+.arrow:hover::after {
+  border-color: var(--arrow-color-hover);
+}
+.hero-arrows {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 3;
+}
+/* Fade Animasyonları */
+.fade-in {
+  opacity: 1;
+  transition: opacity 0.5s ease-in;
+}
+.fade-out {
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+
+
+/* Main Content */
+.content {
+  padding: 40px;
+}
