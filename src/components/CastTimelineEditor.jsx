@@ -1,23 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
-export type Slot = { id: string; start: number; end: number };
-export type GhostLane = { id: string; name: string; color: string; slots: { start: number; end: number }[] };
-
-export type CastTimelineEditorProps = {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  initialSlots: { start: number; end: number }[];
-  ghosts?: GhostLane[];         // diğer cast’lar: referans, read-only
-  onSave: (slots: Slot[]) => void;
-  snap?: number;                // default 0.05s
-};
+/**
+ * @typedef {{id: string, start: number, end: number}} Slot
+ * @typedef {{id: string, name: string, color: string, slots: Array<{start: number, end: number}>}} GhostLane
+ */
 
 const SNAP = 0.05;
 const MIN_LEN = 0.1;
 
 function guid() { return Math.random().toString(36).slice(2, 10); }
-function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
-function snapf(n: number, step = SNAP) { return Math.round(n / step) * step; }
-function fmt(s: number) {
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+function snapf(n, step = SNAP) { return Math.round(n / step) * step; }
+function fmt(s) {
   if (!isFinite(s)) return "0:00.000";
   const ms = Math.floor((s % 1) * 1000).toString().padStart(3, "0");
   const total = Math.floor(s);
@@ -28,11 +22,11 @@ function fmt(s: number) {
 
 export default function CastTimelineEditor({
   videoRef, initialSlots, ghosts = [], onSave, snap = SNAP,
-}: CastTimelineEditorProps) {
-  const [slots, setSlots] = useState<Slot[]>(
-    () => initialSlots.map((s) => ({ id: guid(), ...s })).sort((a, b) => a.start - b.start)
+}) {
+  const [slots, setSlots] = useState(() =>
+    initialSlots.map((s) => ({ id: guid(), ...s })).sort((a, b) => a.start - b.start)
   );
-  const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef(null)
   const [w, setW] = useState(800);
   const duration = videoRef.current?.duration ?? 0;
   const current = videoRef.current?.currentTime ?? 0;
@@ -56,39 +50,45 @@ export default function CastTimelineEditor({
   }, []);
 
   const pps = useMemo(() => (duration > 0 ? w / duration : 0), [w, duration]);
-  const t2x = (t: number) => t * pps;
-  const x2t = (x: number) => x / Math.max(1, pps);
+  const t2x = (t) => t * pps;
+  const x2t = (x) => x / Math.max(1, pps);
 
-  const seek = (t: number) => {
+  const seek = (t) => {
     if (!videoRef.current) return;
     videoRef.current.currentTime = clamp(t, 0, duration || 0);
   };
 
   // mouse edit
-  const [sel, setSel] = useState<string | null>(null);
-  const [drag, setDrag] = useState<null | { mode: "move" | "l" | "r"; id: string; offset: number; startSnap: Slot }>(null);
+  const [sel, setSel] = useState(null);
+  const [drag, setDrag] = useState(null);
 
-  function onDownBlank(e: React.MouseEvent) {
+  function onDownBlank(e) {
     if (!duration) return;
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, w);
     const t0 = snapf(clamp(x2t(x), 0, duration));
-    const temp: Slot = { id: "__temp__", start: t0, end: Math.min(duration, t0 + 0.2) };
+    const temp = { id: "__temp__", start: t0, end: Math.min(duration, t0 + 0.2) };
     setSlots((prev) => [...prev, temp]);
     setSel(temp.id);
     setDrag({ mode: "r", id: temp.id, offset: 0, startSnap: { ...temp } });
   }
-  function onDownSlot(e: React.MouseEvent, s: Slot, mode: "move" | "l" | "r") {
+  function onDownSlot(e, s, mode) {
     e.stopPropagation();
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, w);
     const off = x - t2x(s.start);
     setSel(s.id);
     setDrag({ mode, id: s.id, offset: off, startSnap: { ...s } });
   }
-  function onMove(e: React.MouseEvent) {
+  function onMove(e) {
     if (!drag) return;
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect()
     const x = clamp(e.clientX - rect.left, 0, w);
     setSlots((prev) => {
       const idx = prev.findIndex((p) => p.id === drag.id);
@@ -140,14 +140,14 @@ export default function CastTimelineEditor({
     const t = videoRef.current?.currentTime ?? 0;
     const start = snapf(clamp(t, 0, Math.max(0, duration - MIN_LEN)), snap);
     const end = snapf(clamp(t + len, start + MIN_LEN, duration), snap);
-    const s: Slot = { id: guid(), start, end };
+    const s = { id: guid(), start, end };
     setSlots((p) => [...p, s].sort((a, b) => a.start - b.start));
     setSel(s.id);
   }
 
   // kısayollar
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e) => {
       if (!sel) return;
       const idx = slots.findIndex((s) => s.id === sel);
       if (idx === -1) return;
@@ -180,9 +180,16 @@ export default function CastTimelineEditor({
   }, [sel, slots, duration, snap, delSel]);
 
   // ===== styles
-  const panelText = { color: "#eee", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial" } as const;
-  const barBtn: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.12)", background: "#1b1b24", color: "#eee", cursor: "pointer" };
-  const timelineStyle: React.CSSProperties = {
+  const panelText = { color: "#eee", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial" };
+  const barBtn = {
+    padding: "6px 10px",
+    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,.12)",
+    background: "#1b1b24",
+    color: "#eee",
+    cursor: "pointer",
+  };
+  const timelineStyle = {
     position: "relative",
     height: 140,                 // TEK SATIR HİSSİ (ghost üst, edit bandı alt)
     borderRadius: 12,
@@ -219,7 +226,7 @@ export default function CastTimelineEditor({
         onMouseMove={onMove}
         onMouseUp={onUp}
         onDoubleClick={(e) => {
-          const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+          const rect = e.currentTarget.getBoundingClientRect();
           const x = e.clientX - rect.left;
           seek(x2t(x));
         }}
@@ -305,27 +312,63 @@ export default function CastTimelineEditor({
   );
 }
 
-function Grid({ duration, width }: { duration: number; width: number }) {
-  const majorEvery = 5, minorEvery = 1;
+function Grid({ duration, width }) {
+  const majorEvery = 5;
+  const minorEvery = 1;
   const pps = duration > 0 ? width / duration : 0;
-  const minors: number[] = []; for (let t = 0; t <= duration; t += minorEvery) minors.push(t);
-  const majors: number[] = []; for (let t = 0; t <= duration; t += majorEvery) majors.push(t);
+  const minors = [];
+  for (let t = 0; t <= duration; t += minorEvery) minors.push(t);
+  const majors = [];
+  for (let t = 0; t <= duration; t += majorEvery) majors.push(t);
 
-  // inline çizgiler ve alt etiket hattı
-  const gridWrap: React.CSSProperties = { position: "absolute", inset: 0 } as const;
-  const labelBar: React.CSSProperties = { position: "absolute", left: 0, right: 0, bottom: 0, height: 24, background: "rgba(255,255,255,.06)" };
+  const gridWrap = { position: "absolute", inset: 0 };
+  const labelBar = {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 24,
+    background: "rgba(255,255,255,.06)",
+  };
 
   return (
     <div style={gridWrap}>
       {minors.map((t) => (
-        <div key={`m${t}`} style={{ position: "absolute", top: 0, bottom: 0, left: t * pps, borderRight: "1px solid rgba(255,255,255,.08)" }} />
+        <div
+          key={`m${t}`}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: t * pps,
+            borderRight: "1px solid rgba(255,255,255,.08)",
+          }}
+        />
       ))}
       {majors.map((t) => (
-        <div key={`M${t}`} style={{ position: "absolute", top: 0, bottom: 0, left: t * pps, borderRight: "1px solid rgba(255,255,255,.24)" }} />
+        <div
+          key={`M${t}`}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: t * pps,
+            borderRight: "1px solid rgba(255,255,255,.24)",
+          }}
+        />
       ))}
       <div style={labelBar} />
       {majors.map((t) => (
-        <div key={`L${t}`} style={{ position: "absolute", bottom: 2, left: t * pps + 4, fontSize: 11, color: "rgba(255,255,255,.85)" }}>
+        <div
+          key={`L${t}`}
+          style={{
+            position: "absolute",
+            bottom: 2,
+            left: t * pps + 4,
+            fontSize: 11,
+            color: "rgba(255,255,255,.85)",
+          }}
+        >
           {fmt(t)}
         </div>
       ))}

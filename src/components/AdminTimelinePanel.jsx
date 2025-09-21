@@ -11,25 +11,20 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  * - Lint-clean (no any, no empty, no useless-escape)
  */
 
-export type Slot = {
-  id: string;
-  start: number;
-  end: number;
-  label?: string;
-  cast?: string[];
-  color?: string;
-  kind?: Kind; // slot tipi (stil/rengi etkiler)
-};
+/**
+ * @typedef {Object} Slot
+ * @property {string} id
+ * @property {number} start
+ * @property {number} end
+ * @property {string} [label]
+ * @property {string[]} [cast]
+ * @property {string} [color]
+ * @property {string} [kind]
+ */
 
-export type AdminTimelinePanelProps = {
-  videoRef: React.RefObject<HTMLVideoElement>;
-  initialSlots?: Slot[];
-  onSave?: (slots: Slot[]) => void;
-};
+const KIND_NAMES = ["dialogue", "music", "sfx", "fx", "note"];
 
-type Kind = "dialogue" | "music" | "sfx" | "fx" | "note";
-
-const KIND_COLORS: Record<Kind, string> = {
+const KIND_COLORS = {
   dialogue: "#7c4bd9",
   music: "#5ad1b3",
   sfx: "#ffd166",
@@ -44,15 +39,15 @@ function guid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function clamp(n: number, min: number, max: number) {
+function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function snap(n: number, step = SNAP) {
+function snap(n, step = SNAP) {
   return Math.round(n / step) * step;
 }
 
-function secondsToTime(s: number) {
+function secondsToTime(s) {
   if (!isFinite(s)) return "0:00.000";
   const ms = Math.floor((s % 1) * 1000)
     .toString()
@@ -65,27 +60,35 @@ function secondsToTime(s: number) {
   return `${m}:${sec}.${ms}`;
 }
 
+function normalizeKind(value) {
+  return typeof value === "string" && KIND_NAMES.includes(value)
+    ? value
+    : "dialogue";
+}
+
 export default function AdminTimelinePanel({
   videoRef,
   initialSlots = [],
   onSave,
-}: AdminTimelinePanelProps) {
-  const [slots, setSlots] = useState<Slot[]>(() =>
+}) {
+  const [slots, setSlots] = useState(() =>
     [...initialSlots].sort((a, b) => a.start - b.start)
   );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragMode, setDragMode] = useState<null | "move" | "resize-l" | "resize-r">(null);
+  const [dragMode, setDragMode] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
-  const [dragStartSnapshot, setDragStartSnapshot] = useState<Slot | null>(null);
-  const timelineRef = useRef<HTMLDivElement>(null);
+  const [dragStartSnapshot, setDragStartSnapshot] = useState(null);
+  const timelineRef = useRef(null)
   const [width, setWidth] = useState(640);
 
   // DnD palet → timeline geçici önizleme
-  const [dragCreate, setDragCreate] = useState<
-    | { active: true; startX: number; currentX: number; meta: { cast?: string; kind?: Kind } }
-    | { active: false }
-  >({ active: false });
+  const [dragCreate, setDragCreate] = useState({
+    active: false,
+    startX: 0,
+    currentX: 0,
+    meta: null,
+    });
 
   const duration = videoRef.current?.duration ?? 0;
   const currentTime = videoRef.current?.currentTime ?? 0;
@@ -93,7 +96,7 @@ export default function AdminTimelinePanel({
   // Bulk import UI
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
   // Resize observer for timeline width
   useEffect(() => {
@@ -119,7 +122,7 @@ export default function AdminTimelinePanel({
 
   // Keyboard helpers
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e) => {
       if (!selectedId || !videoRef.current) return;
       const idx = slots.findIndex((s) => s.id === selectedId);
       if (idx === -1) return;
@@ -154,69 +157,87 @@ export default function AdminTimelinePanel({
 
   const pxPerSec = useMemo(() => (duration > 0 ? width / duration : 0), [width, duration]);
 
-  function timeToX(t: number) {
+  function timeToX(t) {
     return t * pxPerSec;
   }
-  function xToTime(x: number) {
+  function xToTime(x) {
     return x / Math.max(1, pxPerSec);
   }
 
-  function seek(t: number) {
+  function seek(t) {
     if (!videoRef.current) return;
     videoRef.current.currentTime = clamp(t, 0, duration || 0);
   }
 
   // === Palette DnD ===
-  function onPaletteDragStart(e: React.DragEvent, meta: { cast?: string; kind?: Kind }) {
+  function onPaletteDragStart(e, meta) {
     e.dataTransfer.setData("application/x-slot", JSON.stringify(meta));
     e.dataTransfer.effectAllowed = "copy";
   }
 
-  function onTimelineDragOver(e: React.DragEvent) {
+  function onTimelineDragOver(e) {
     const dt = e.dataTransfer;
     if (!dt) return;
     const has = Array.from(dt.types).includes("application/x-slot");
     if (!has) return;
     e.preventDefault();
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, width);
 
     setDragCreate((prev) => {
-      const meta = prev.active ? prev.meta : parseMeta(dt);
-      if (!meta) return { active: false };
+            const meta = prev.active && prev.meta ? prev.meta : parseMeta(dt);
+      if (!meta) {
+        return { active: false, startX: 0, currentX: 0, meta: null };
+      }
       if (!prev.active) {
         return { active: true, startX: x, currentX: x + 30, meta };
       }
-      return { ...prev, currentX: x } as typeof prev;
+      return { ...prev, currentX: x };
     });
   }
 
-  function parseMeta(dt: DataTransfer): { cast?: string; kind?: Kind } | null {
+   function parseMeta(dt) {
     try {
       const raw = dt.getData("application/x-slot");
       if (!raw) return null;
-      const m = JSON.parse(raw) as { cast?: string; kind?: Kind };
-      return m;
+      const m = JSON.parse(raw);
+      if (m && typeof m === "object") {
+        return {
+          cast: typeof m.cast === "string" ? m.cast : undefined,
+          kind: typeof m.kind === "string" ? m.kind : undefined,
+        };
+      }
+      return null
     } catch {
       return null;
     }
   }
 
-  function onTimelineDrop(e: React.DragEvent) {
+  function onTimelineDrop(e) {
     const dt = e.dataTransfer;
     if (!dt) return;
     const meta = parseMeta(dt);
-    if (!meta) {
-      setDragCreate({ active: false });
+    e.preventDefault();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
+    const dropX = clamp(e.clientX - rect.left, 0, width);
+    const appliedMeta = dragCreate.active && dragCreate.meta ? dragCreate.meta : meta;
+
+    if (!appliedMeta) {
+      setDragCreate({ active: false, startX: 0, currentX: 0, meta: null });
       return;
     }
-    e.preventDefault();
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
-    const dropX = clamp(e.clientX - rect.left, 0, width);
 
     setSlots((prev) => {
-      const startX = dragCreate.active ? Math.min(dragCreate.startX, dragCreate.currentX) : dropX - 20;
-      let endX = dragCreate.active ? Math.max(dragCreate.startX, dragCreate.currentX) : dropX + 40;
+      const startX = dragCreate.active
+        ? Math.min(dragCreate.startX, dragCreate.currentX)
+        : dropX - 20;
+      let endX = dragCreate.active
+        ? Math.max(dragCreate.startX, dragCreate.currentX)
+        : dropX + 40;
       if (endX - startX < 8) endX = startX + 8;
 
       const start = snap(clamp(xToTime(startX), 0, Math.max(0, duration - MIN_LEN)));
@@ -227,42 +248,49 @@ export default function AdminTimelinePanel({
       if (hitIdx !== -1) {
         const next = [...prev];
         const s = { ...next[hitIdx] };
-        if (meta.cast) {
-          const setCast = new Set([...(s.cast ?? []), meta.cast]);
+        if (appliedMeta.cast) {
+          const setCast = new Set([...(s.cast ?? []), appliedMeta.cast]);
           s.cast = [...setCast];
         }
-        if (meta.kind) {
-          s.kind = meta.kind;
-          s.color = KIND_COLORS[meta.kind];
+        if (appliedMeta.kind && KIND_NAMES.includes(appliedMeta.kind)) {
+          s.kind = appliedMeta.kind;
+          s.color = KIND_COLORS[appliedMeta.kind];
         }
         next[hitIdx] = s;
         return next;
       }
 
-      const newSlot: Slot = {
+      const newSlot = {
         id: guid(),
         start,
         end,
-        label: meta.cast ? `${meta.cast}` : meta.kind ? meta.kind : "",
-        cast: meta.cast ? [meta.cast] : [],
-        kind: meta.kind,
-        color: meta.kind ? KIND_COLORS[meta.kind] : pickColor(),
+        label: appliedMeta.cast
+          ? `${appliedMeta.cast}`
+          : appliedMeta.kind
+          ? appliedMeta.kind
+          : "",
+        cast: appliedMeta.cast ? [appliedMeta.cast] : [],
+        kind: appliedMeta.kind,
+        color:
+          appliedMeta.kind && KIND_NAMES.includes(appliedMeta.kind)
+            ? KIND_COLORS[appliedMeta.kind]
+            : pickColor()
       };
       return [...prev, newSlot].sort((a, b) => a.start - b.start);
     });
 
-    setDragCreate({ active: false });
+    setDragCreate({ active: false, startX: 0, currentX: 0, meta: null })
   }
 
   function onTimelineDragLeave() {
-    setDragCreate({ active: false });
+    setDragCreate({ active: false, startX: 0, currentX: 0, meta: null });
   }
 
   function addFromCurrent(seconds = 2) {
     const t = videoRef.current?.currentTime ?? 0;
     const start = snap(clamp(t, 0, Math.max(0, duration - MIN_LEN)));
     const end = snap(clamp(t + seconds, start + MIN_LEN, duration));
-    const newSlot: Slot = {
+    const newSlot = {
       id: guid(),
       start,
       end,
@@ -282,15 +310,17 @@ export default function AdminTimelinePanel({
     const len = s.end - s.start;
     const start = snap(clamp(s.end + 0.05, 0, Math.max(0, duration - len)));
     const end = snap(clamp(start + len, start + MIN_LEN, duration));
-    const newSlot: Slot = { ...s, id: guid(), start, end };
+    const newSlot = { ...s, id: guid(), start, end };
     setSlots((prev) => [...prev, newSlot].sort((a, b) => a.start - b.start));
     setSelectedId(newSlot.id);
   }
 
   // Drag logic (slot move/resize)
-  function onMouseDownSlot(e: React.MouseEvent, slot: Slot, mode: typeof dragMode) {
+  function onMouseDownSlot(e, slot, mode) {
     e.stopPropagation();
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const offsetWithin = mouseX - timeToX(slot.start);
     setSelectedId(slot.id);
@@ -300,12 +330,14 @@ export default function AdminTimelinePanel({
     setDragStartSnapshot({ ...slot });
   }
 
-  function onMouseDownBlank(e: React.MouseEvent) {
+  function onMouseDownBlank(e) {
     if (!duration) return;
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
     const startX = e.clientX - rect.left;
     const t0 = snap(clamp(xToTime(startX), 0, duration));
-    const temp: Slot = {
+    const temp = {
       id: "__temp__",
       start: t0,
       end: t0 + 0.2,
@@ -321,11 +353,13 @@ export default function AdminTimelinePanel({
     setDragStartSnapshot({ ...temp });
   }
 
-  function onMouseMove(e: React.MouseEvent) {
+  function onMouseMove(e) {
     if (!isDragging || !dragMode || !selectedId) return;
     const idx = slots.findIndex((s) => s.id === selectedId);
     if (idx === -1) return;
-    const rect = (timelineRef.current as HTMLDivElement).getBoundingClientRect();
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
 
     const next = [...slots];
@@ -381,7 +415,7 @@ export default function AdminTimelinePanel({
     setSelectedId(null);
   }
 
-  function updateSelected(patch: Partial<Slot>) {
+  function updateSelected(patch) {
     if (!selectedId) return;
     setSlots((prev) => {
       const idx = prev.findIndex((s) => s.id === selectedId);
@@ -393,74 +427,100 @@ export default function AdminTimelinePanel({
   }
 
   // Bulk import
-  type RawSlot = {
-    id?: string;
-    start?: number | string;
-    end?: number | string;
-    label?: string;
-    cast?: string[] | string;
-    color?: string;
-    kind?: Kind;
-  };
+  function normalizeCast(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean);
+    }
+    if (typeof value === "string") {
+      return value
+        .split(/[;,|/]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
 
-  function tryParseBulk(text: string): Slot[] | null {
+  function tryParseBulk(text) {
     setError(null);
-    // JSON
-    try {
-      const j = JSON.parse(text);
-      if (Array.isArray(j)) {
-        const normalized = (j as unknown[]).map((x) => {
-          const r = x as RawSlot;
-          const castArr = Array.isArray(r.cast)
-            ? r.cast
-            : r.cast
-            ? String(r.cast)
-                .split(/[;,]/)
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : [];
 
-        return {
-            id: r.id ?? guid(),
-            start: Number(r.start ?? 0),
-            end: Number(r.end ?? 0),
-            label: r.label ?? "",
-            cast: castArr,
-            color: r.color ?? (r.kind ? KIND_COLORS[r.kind] : pickColor()),
-            kind: r.kind ?? "dialogue",
-          } satisfies Slot;
-        }) as Slot[];
-        return normalized;
+    const tryJson = () => {
+      try {
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) return null;
+        return parsed
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const raw = item;
+            const kind = normalizeKind(raw.kind);
+            const hasKind = typeof raw.kind === "string" && KIND_NAMES.includes(raw.kind);
+            const cast = normalizeCast(raw.cast);
+            const color =
+              typeof raw.color === "string" && raw.color
+                ? raw.color
+                : hasKind
+                ? KIND_COLORS[kind]
+                : pickColor();
+            return {
+              id: typeof raw.id === "string" && raw.id ? raw.id : guid(),
+              start: Number(raw.start ?? 0),
+              end: Number(raw.end ?? 0),
+              label: typeof raw.label === "string" ? raw.label : "",
+              cast,
+              kind,
+              color,
+            };
+          })
+          .filter(Boolean);
+      } catch {
+        return null;
       }
-    } catch {
-      /* ignore */
+    };
+
+    const tryCsv = () => {
+      try {
+        const lines = text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        if (!lines.length) return null;
+        const rows = lines.map((line) =>
+          line.split(/,(?![^"]*")/).map((cell) => cell.replace(/"/g, "").trim())
+        );
+        const hasHeader = rows[0][0].toLowerCase().includes("start");
+        const dataRows = hasHeader ? rows.slice(1) : rows;
+        return dataRows.map((cols) => {
+          const start = Number(cols[0] ?? 0);
+          const end = Number(cols[1] ?? Math.max(0, start + 1));
+          const label = cols[2] ?? "";
+          const cast = normalizeCast(cols[3] ?? "");
+          const kindRaw = cols[4];
+          const kind = normalizeKind(kindRaw ?? "dialogue");
+          const hasKind = typeof kindRaw === "string" && KIND_NAMES.includes(kindRaw);
+          return {
+            id: guid(),
+            start,
+            end,
+            label,
+            cast,
+            kind,
+            color: hasKind ? KIND_COLORS[kind] : pickColor(),
+          };
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    const jsonResult = tryJson();
+    if (jsonResult && jsonResult.length) {
+      return jsonResult;
     }
 
-    // CSV: start,end,label,cast1|cast2,kind
-    try {
-      const lines = text
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-      if (lines.length) {
-        // virgül, fakat çift tırnak içindekileri bölme
-        const rows = lines.map((l) =>
-          l.split(/,(?![^"]*")/).map((c) => c.replace(/"/g, "").trim())
-        );
-        const startCol = rows[0][0].toLowerCase().includes("start") ? 1 : 0;
-        const usable = startCol ? rows.slice(1) : rows;
-        const out: Slot[] = usable.map((r) => {
-          const start = Number(r[0] ?? 0);
-          const end = Number(r[1] ?? Math.max(0, start + 1));
-          const label = r[2] ?? "";
-          const cast = (r[3] ?? "").split(/[|;/]/).map((s) => s.trim()).filter(Boolean);
-          const kind = ((r[4] ?? "dialogue") as Kind);
-          return { id: guid(), start, end, label, cast, kind, color: KIND_COLORS[kind] };
-        });
-        return out;
-      }
-    } catch {
-      /* ignore */
+    const csvResult = tryCsv();
+    if (csvResult && csvResult.length) {
+      return csvResult;
     }
 
     setError("Geçersiz JSON/CSV formatı.");
@@ -597,7 +657,10 @@ export default function AdminTimelinePanel({
               style={{
                 left: Math.min(dragCreate.startX, dragCreate.currentX),
                 width: Math.max(6, Math.abs(dragCreate.currentX - dragCreate.startX)),
-                borderColor: dragCreate.meta.kind ? KIND_COLORS[dragCreate.meta.kind] : "#bfb8d6",
+                borderColor:
+                  dragCreate.meta && dragCreate.meta.kind
+                    ? KIND_COLORS[dragCreate.meta.kind]
+                    : "#bfb8d6",
               }}
             />
           )}
@@ -661,7 +724,7 @@ export default function AdminTimelinePanel({
                     className="bg-[#0f0f14] rounded px-2 py-1 border border-white/10 text-sm"
                     value={selected.kind ?? "dialogue"}
                     onChange={(e) => {
-                      const k = e.target.value as Kind;
+                      const k = normalizeKind(e.target.value);
                       updateSelected({ kind: k, color: KIND_COLORS[k] });
                     }}
                   >
@@ -766,13 +829,13 @@ export default function AdminTimelinePanel({
   );
 }
 
-function Grid({ duration, width }: { duration: number; width: number }) {
+function Grid({ duration, width }) {
   const majorEvery = 5; // seconds
   const minorEvery = 1; // seconds
 
   const pxPerSec = duration > 0 ? width / duration : 0;
-  const majors: number[] = [];
-  const minors: number[] = [];
+  const majors = [];
+  const minors = [];
   for (let t = 0; t <= duration; t += minorEvery) minors.push(t);
   for (let t = 0; t <= duration; t += majorEvery) majors.push(t);
 
@@ -806,21 +869,10 @@ function Grid({ duration, width }: { duration: number; width: number }) {
   );
 }
 
-function SlotView({
-  slot,
-  selected,
-  toX,
-  onMouseDown,
-}: {
-  slot: Slot;
-  selected: boolean;
-  toX: (t: number) => number;
-  onMouseDown: (
-    e: React.MouseEvent,
-    slot: Slot,
-    mode: "move" | "resize-l" | "resize-r"
-  ) => void;
-}) {
+/**
+ * @param {{slot: Slot, selected: boolean, toX: (t: number) => number, onMouseDown: (e: MouseEvent, slot: Slot, mode: "move" | "resize-l" | "resize-r") => void}} props
+ */
+function SlotView({ slot, selected, toX, onMouseDown }) {
   const left = toX(slot.start);
   const right = toX(slot.end);
   const w = Math.max(2, right - left);
@@ -855,20 +907,12 @@ function SlotView({
   );
 }
 
-function Playhead({
-  x,
-  onSeek,
-  xToTime,
-}: {
-  x: number;
-  onSeek: (t: number) => void;
-  xToTime: (x: number) => number;
-}) {
+function Playhead({ x, onSeek, xToTime }) {
   return (
     <div
       className="absolute inset-0"
       onDoubleClick={(e) => {
-        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+        const rect = e.currentTarget.getBoundingClientRect()
         const mouseX = e.clientX - rect.left;
         onSeek(xToTime(mouseX));
       }}
@@ -882,15 +926,7 @@ function Playhead({
   );
 }
 
-function FieldNumber({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
+function FieldNumber({ label, value, onChange }) {
   return (
     <div className="flex items-center gap-2">
       <label className="w-16 opacity-70 text-xs">{label}</label>
@@ -905,17 +941,7 @@ function FieldNumber({
   );
 }
 
-function FieldText({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
+function FieldText({ label, value, onChange, placeholder }) {
   return (
     <div className="flex items-center gap-2">
       <label className="w-16 opacity-70 text-xs">{label}</label>
@@ -930,13 +956,7 @@ function FieldText({
   );
 }
 
-function CastEditor({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
+function CastEditor({ value, onChange }) {
   const [v, setV] = useState("");
   return (
     <div className="flex-1">
@@ -984,5 +1004,6 @@ function CastEditor({
   );
 }
 
-const PALETTE_CAST = ["Hannah", "Mert", "Ayşe", "John", "SFX-Drone", "Crowd"] as const;
-const PALETTE_KINDS: Kind[] = ["dialogue", "music", "sfx", "fx", "note"];
+const PALETTE_CAST = ["Hannah", "Mert", "Ayşe", "John", "SFX-Drone", "Crowd"];
+const PALETTE_KINDS = [...KIND_NAMES];
+

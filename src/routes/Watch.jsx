@@ -1,7 +1,6 @@
-import { Link, useParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Link, useParams } from "react-router-dom";
 import XRayPanel from "../components/XRayPanel";
-import type { XRayItem } from "../components/XRayPanel";
 import { applyOverrides } from "../utils/castLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
 
@@ -18,19 +17,15 @@ const COLORS = {
   border: "rgba(255,255,255,.14)",
 };
 
-type Q = "480" | "720" | "1080";
-const QUALITIES: Q[] = ["480", "720", "1080"];
+const QUALITIES = ["480", "720", "1080"];
 
-function formatTime(s: number) {
+function formatTime(s) {
   if (!isFinite(s)) return "0:00";
   const m = Math.floor(s / 60);
   const ss = Math.floor(s % 60);
   return `${m}:${ss.toString().padStart(2, "0")}`;
 }
-function srcFor(id: string | undefined, q?: Q) {
-  if (!id) return "";
-
-function srcFor(id: string | undefined, q?: Q) {
+function srcFor(id, q = "720") {
   if (!id) return "";
 
   // Eğer video id'si ".mp4" ile bitiyorsa uzantıyı tekrar ekleme
@@ -38,7 +33,7 @@ function srcFor(id: string | undefined, q?: Q) {
     if (import.meta.env.VITE_USE_SINGLE_MP4 === "1") {
       return `/videos/${id}`;
     }
-    return `/videos/${id.replace(".mp4", "")}_${(q ?? "720") as Q}.mp4`;
+    return `/videos/${id.replace(".mp4", "")}_${q}.mp4`;
   }
 
   // Eğer uzantısız id verilmişse
@@ -47,13 +42,13 @@ function srcFor(id: string | undefined, q?: Q) {
   }
 
   // Eski davranış (çoklu kalite)
-  return `/videos/${id}_${(q ?? "720") as Q}.mp4`;
+  return `/videos/${id}_${q}.mp4`;
 }
 
 
 
 /** ikon */
-function Icon({ src, alt }: { src: string; alt?: string }) {
+function Icon({ src, alt }) {
   return (
     <img
       src={src}
@@ -64,7 +59,7 @@ function Icon({ src, alt }: { src: string; alt?: string }) {
 }
 
 /** buton style */
-function btnStyle(): React.CSSProperties {
+function btnStyle() {
   return {
     width: 42,
     height: 42,
@@ -78,12 +73,12 @@ function btnStyle(): React.CSSProperties {
     transition: "background .18s ease",
   };
 }
-function hoverize(e: React.MouseEvent<HTMLButtonElement>, on = true) {
+function hoverize(e, on = true) {
   e.currentTarget.style.background = on ? "rgba(124,75,217,0.18)" : "transparent";
 }
 
 /** menü */
-function dropdownStyle(open: boolean): React.CSSProperties {
+function dropdownStyle(open) {
   return {
     position: "absolute",
     right: 0,
@@ -94,7 +89,7 @@ function dropdownStyle(open: boolean): React.CSSProperties {
     transition: "opacity .16s ease, transform .16s ease",
   };
 }
-function MenuCard({ title, children }: { title: string; children: React.ReactNode }) {
+function MenuCard({ title, children }) {
   return (
     <div
       style={{
@@ -112,15 +107,7 @@ function MenuCard({ title, children }: { title: string; children: React.ReactNod
     </div>
   );
 }
-function MenuItem({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
+function MenuItem({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -142,10 +129,10 @@ function MenuItem({
 
 export default function Watch() {
   const { id } = useParams();
-  const [quality, setQuality] = useState<Q>("720");
+  const [quality, setQuality] = useState("720");
   const src = useMemo(() => srcFor(id, quality), [id, quality]);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef(null);
 
   // durumlar
   const [playing, setPlaying] = useState(false);
@@ -163,12 +150,12 @@ export default function Watch() {
 
   // X-Ray panel
   const [xrayOpen, setXrayOpen] = useState(false);
-  const [allXray, setAllXray] = useState<XRayItem[]>(xrayDemo);
-  const [xrayItems, setXrayItems] = useState<XRayItem[]>([]);
+  const [allXray, setAllXray] = useState(() => [...xrayDemo]);
+  const [xrayItems, setXrayItems] = useState([]);
 
   // auto-hide controls
   const [controlsVisible, setControlsVisible] = useState(true);
-  const hideTimerRef = useRef<number | null>(null);
+  const hideTimerRef = useRef(null);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -258,10 +245,12 @@ export default function Watch() {
 
   // dış tık menüler
   useEffect(() => {
-    const close = (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      if (!t.closest?.(".menu-speed")) setSpeedOpen(false);
-      if (!t.closest?.(".menu-quality")) setQualityOpen(false);
+    const close = (e) => {
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        if (!target.closest?.(".menu-speed")) setSpeedOpen(false);
+        if (!target.closest?.(".menu-quality")) setQualityOpen(false);
+      }
     };
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
@@ -269,21 +258,25 @@ export default function Watch() {
 
   // aksiyonlar
   const togglePlay = () => {
-    const v = videoRef.current!;
+    const v = videoRef.current;
+    if (!v) return;
     if (v.paused) {
       v.play().catch(() => {});
-    } else v.pause();
+    } else {
+      v.pause();
+    }
   };
-  const onSeek = (val: number | string) => {
-    const v = videoRef.current!;
+  const onSeek = (val) => {
+    const v = videoRef.current;
+    if (!v) return;
     const to = Number(val);
     v.currentTime = to;
     setCurrent(to);
   };
-  const changeVol = (val: number | string) => {
-    const v = Number(val);
-    setVolume(v);
-    setMuted(v === 0);
+  const changeVol = (val) => {
+    const value = Number(val);
+    setVolume(value);
+    setMuted(value === 0);
   };
   const toggleMute = () => setMuted((m) => !m);
   const enterFs = () => {
@@ -294,12 +287,13 @@ export default function Watch() {
   };
 
   // kalite değiştir (pozisyonu koru)
-  async function setQualityAndStay(q: Q) {
+  async function setQualityAndStay(q) {
     if (!id || q === quality) {
       setQualityOpen(false);
       return;
     }
-    const v = videoRef.current!;
+    const v = videoRef.current;
+    if (!v) return;
     const wasPlaying = !v.paused;
     const t = v.currentTime;
 

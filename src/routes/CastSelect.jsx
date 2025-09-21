@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import type { XRayItem } from "../components/XRayPanel";
 import { loadXray, saveXray } from "../utils/xrayStore";
-import { allCasts, type CastBrief } from "../data/globalCasts";
+import { allCasts } from "../data/globalCasts";
 
 export default function CastSelect() {
   const { id = "demo" } = useParams();
   const nav = useNavigate();
-  const [items, setItems] = useState<XRayItem[]>([]);
+  const [items, setItems] = useState([])
   const [adding, setAdding] = useState(false);
-  const [addId, setAddId] = useState<string>("");
+  const [addId, setAddId] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -22,13 +21,13 @@ export default function CastSelect() {
   }, [id]);
 
   const assignedIds = new Set(items.map((x) => x.id));
-  const candidates: CastBrief[] = allCasts.filter((c) => !assignedIds.has(c.id));
+ const candidates = allCasts.filter((c) => !assignedIds.has(c.id));
 
   async function handleAdd() {
     if (!addId) return;
     const c = candidates.find((x) => x.id === addId);
     if (!c) return;
-    const next: XRayItem[] = [...items, { ...c, slots: [] }];
+    const next = [...items, { ...c, slots: [] }];
     await saveXray(id, next);
     setItems(next);
     setAdding(false);

@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { XRayItem } from "../components/XRayPanel";
-import CastTimelineEditor, { type Slot } from "../components/CastTimelineEditor";
+import CastTimelineEditor from "../components/CastTimelineEditor";
 import { xrayDemo } from "../data/xrayDemo";
 import { applyOverrides, saveCastSlots } from "../utils/castLocal";
 
 /** kalite seçimi: 1080 → 720 → 480 (var olana düşer) */
-type Q = "480" | "720" | "1080";
-const PREFS: Q[] = ["1080", "720", "480"];
-function srcFor(id: string | undefined, q: Q) {
+const PREFS = ["1080", "720", "480"];
+function srcFor(id, q) {
   if (!id) return "";
   return `/videos/${id}_${q}.mp4`;
 }
@@ -17,10 +15,10 @@ export default function CastEditor() {
   const { id = "demo", castId = "" } = useParams();
   const nav = useNavigate();
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef(null);  
 
   // xrayDemo + local overrides birleşik liste
-  const [list, setList] = useState<XRayItem[]>(() => applyOverrides(id, xrayDemo));
+  const [list, setList] = useState(() => applyOverrides(id, xrayDemo));
 
   // cast/others
   const me = useMemo(() => list.find((x) => x.id === castId) || null, [list, castId]);
@@ -28,7 +26,7 @@ export default function CastEditor() {
 
   // video kalite fallback
   const [prefIdx, setPrefIdx] = useState(0);
-  const [src, setSrc] = useState<string>(srcFor(id, PREFS[prefIdx]));
+  const [src, setSrc] = useState(srcFor(id, PREFS[prefIdx]));
 
   // sayfa ilk açılış + her odaklanmada override’ları tazele
   useEffect(() => {
@@ -95,7 +93,7 @@ export default function CastEditor() {
                   color: paletteColor(i),
                   slots: o.slots ?? [],
                 }))}
-                onSave={(edited: Slot[]) => {
+                onSave={(edited) => {
                   // compact: sadece start/end
                   const compact = edited.map(({ start, end }) => ({ start, end }));
                   // videoId[castId] formatında kaydet
@@ -133,7 +131,7 @@ export default function CastEditor() {
   );
 }
 
-function paletteColor(i: number) {
+function paletteColor(i) {
   const pal = ["#b598ff", "#5ad1b3", "#ffd166", "#8ecae6", "#ff8fa3", "#c3f584"];
   return pal[i % pal.length];
 }

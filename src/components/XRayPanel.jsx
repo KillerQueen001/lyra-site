@@ -1,5 +1,4 @@
-// frontend/src/components/XRayPanel.tsx
-import { AnimatePresence, motion} from "framer-motion";
+import { AnimatePresence, motion as Motion } from "framer-motion";
 
 const COLORS = {
   card: "#1b1b24",
@@ -11,19 +10,14 @@ const COLORS = {
 // Kontrol barını kapatmaması için alt güvenli boşluk
 export const OVERLAY_BOTTOM_SAFE = 84;
 
-export type TimeRange = { start: number; end: number };
-
-export type XRayItem = {
-  id: string;
-  name: string;
-  role: string;
-  photo: string;          // /xray/xxx.jpg veya tam URL
-  slots?: TimeRange[];    // 👈 saniye aralıkları (opsiyonel)
-};
+/**
+ * @typedef {{start: number, end: number}} TimeRange
+ * @typedef {{id: string, name: string, role: string, photo: string, slots?: TimeRange[]}} XRayItem
+ */
 
 // Framer Motion transitions
-const spring: Transition = { type: "spring", stiffness: 420, damping: 34, mass: 0.6 };
-const fade: Transition = { type: "tween", duration: 0.22, ease: "easeInOut" };
+const spring = { type: "spring", stiffness: 420, damping: 34, mass: 0.6 };
+const fade = { type: "tween", duration: 0.22, ease: "easeInOut" };
 
 export default function XRayPanel({
   open,
@@ -32,13 +26,6 @@ export default function XRayPanel({
   items,
   loading = false,
   emptyText = "Bu sahnede cast bulunamadı.",
-}: {
-  open: boolean;
-  onClose: () => void;
-  onOverlayClick?: () => void;
-  items: XRayItem[];
-  loading?: boolean;
-  emptyText?: string;
 }) {
   return (
     <div
@@ -69,7 +56,7 @@ export default function XRayPanel({
       {/* Soldan panel */}
       <AnimatePresence initial={false}>
         {open && (
-          <motion.aside
+          <Motion.aside
             key="panel"
             initial={{ x: "-100%" }}
             animate={{ x: 0 }}
@@ -127,7 +114,7 @@ export default function XRayPanel({
             </div>
 
             {/* Liste / durumlar */}
-            <motion.div
+            <Motion.div
               // parent'i de layout'lu yapıyoruz ki child'lar arası akış daha iyi çözülsün
               layout
               className="xray-scroll"
@@ -141,7 +128,7 @@ export default function XRayPanel({
               {loading ? (
                 <div style={{ display: "grid", gap: 10 }}>
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <motion.div
+                    <Motion.div
                       key={`skeleton-${i}`}
                       initial={{ opacity: 0, y: 8, height: 0, marginBottom: 0 }}
                       animate={{ opacity: 1, y: 0, height: "auto", marginBottom: 10 }}
@@ -186,22 +173,22 @@ export default function XRayPanel({
                           }}
                         />
                       </div>
-                    </motion.div>
+                    </Motion.div>
                   ))}
                 </div>
               ) : items.length === 0 ? (
-                <motion.div
+                <Motion.div
                   initial={{ opacity: 0, y: 6, height: 0, marginBottom: 0 }}
                   animate={{ opacity: 1, y: 0, height: "auto", marginBottom: 0 }}
                   transition={fade}
                   style={{ color: COLORS.textMuted, padding: "8px 2px", overflow: "hidden" }}
                 >
                   {emptyText}
-                </motion.div>
+                </Motion.div>
               ) : (
                 <AnimatePresence initial={false} mode="popLayout">
                   {items.map((p) => (
-                    <motion.div
+                    <Motion.div
                       key={p.id}
                       layout
                       initial={{ opacity: 0, y: 10, scale: 0.98, height: 0, marginBottom: 0 }}
@@ -220,7 +207,7 @@ export default function XRayPanel({
                         background: "rgba(27,27,36,.55)",
                       }}
                     >
-                      <motion.img
+                      <Motion.img
                         src={p.photo}
                         alt={p.name}
                         initial={{ opacity: 0 }}
@@ -232,19 +219,19 @@ export default function XRayPanel({
                         <div style={{ color: COLORS.text, fontWeight: 700 }}>{p.name}</div>
                         <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{p.role}</div>
                       </div>
-                    </motion.div>
+                    </Motion.div>
                   ))}
                 </AnimatePresence>
               )}
-            </motion.div>
-          </motion.aside>
+            </Motion.div>
+          </Motion.aside>
         )}
       </AnimatePresence>
 
       {/* Sağ karartma — alt bar için boşluk bırak */}
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div
+          <Motion.div
             key="overlay"
             onClick={() => {
               onClose();
@@ -270,7 +257,7 @@ export default function XRayPanel({
       {/* Panel kapalıyken çekme kulpu */}
       <AnimatePresence initial={false}>
         {!open && (
-          <motion.button
+          <Motion.button
             key="pull"
             onClick={onClose}
             title="Castlar'ı aç"
@@ -303,7 +290,7 @@ export default function XRayPanel({
                 strokeLinejoin="round"
               />
             </svg>
-          </motion.button>
+          </Motion.button>
         )}
       </AnimatePresence>
     </div>
