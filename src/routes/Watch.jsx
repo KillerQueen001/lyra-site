@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import XRayPanel from "../components/XRayPanel";
 import { applyOverrides } from "../utils/castLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
+import { resolveSingleVideo, resolveVideoSrc, USE_SINGLE_MP4 } from "../utils/videoSource";
 
 
 /** Lyra renk paleti */
@@ -25,27 +26,6 @@ function formatTime(s) {
   const ss = Math.floor(s % 60);
   return `${m}:${ss.toString().padStart(2, "0")}`;
 }
-function srcFor(id, q = "720") {
-  if (!id) return "";
-
-  // Eğer video id'si ".mp4" ile bitiyorsa uzantıyı tekrar ekleme
-  if (id.endsWith(".mp4")) {
-    if (import.meta.env.VITE_USE_SINGLE_MP4 === "1") {
-      return `/videos/${id}`;
-    }
-    return `/videos/${id.replace(".mp4", "")}_${q}.mp4`;
-  }
-
-  // Eğer uzantısız id verilmişse
-  if (import.meta.env.VITE_USE_SINGLE_MP4 === "1") {
-    return `/videos/${id}.mp4`;
-  }
-
-  // Eski davranış (çoklu kalite)
-  return `/videos/${id}_${q}.mp4`;
-}
-
-
 
 /** ikon */
 function Icon({ src, alt }) {
@@ -130,7 +110,7 @@ function MenuItem({ label, active, onClick }) {
 export default function Watch() {
   const { id } = useParams();
   const [quality, setQuality] = useState("720");
-  const src = useMemo(() => srcFor(id, quality), [id, quality]);
+  const src = useMemo(() => resolveVideoSrc(id, quality), [id, quality]);
 
   const videoRef = useRef(null);
 
@@ -296,11 +276,22 @@ export default function Watch() {
     if (!v) return;
     const wasPlaying = !v.paused;
     const t = v.currentTime;
+    const prevQuality = quality;
+    const currentSrc = resolveVideoSrc(id, prevQuality);
+    const newSrc = resolveVideoSrc(id, q);
+    const fallbackSrc = resolveSingleVideo(id);
 
-    const newSrc = srcFor(id, q);
-    setToast(`Kalite değiştiriliyor: ${q}p…`);
-    setQuality(q);
-    setQualityOpen(false);
+    if (newSrc === currentSrc) {
+      setQuality(q);
+      setQualityOpen(false);
+      if (USE_SINGLE_MP4) {
+        setToast("Tek video kullanıldığı için kalite aynı dosyayla oynatılıyor.");
+        setTimeout(() => setToast(""), 1800);
+      }
+      return;
+    }
+
+    let triedSingle = false;
 
     const onLoaded = () => {
       v.currentTime = t;
@@ -309,26 +300,33 @@ export default function Watch() {
         v.play().catch(() => {});
       }
       v.removeEventListener("loadedmetadata", onLoaded);
+      v.removeEventListener("error", onError);
       scheduleAutoHide();
     };
     const onError = () => {
+            if (!triedSingle && fallbackSrc && fallbackSrc !== newSrc) {
+        triedSingle = true;
+        setToast(`${q}p varyasyonu bulunamadı, tek dosya açılıyor.`);
+        v.src = fallbackSrc;
+        v.load();
+        return;
+      }
       setToast(`${q}p bulunamadı, geri dönüyorum.`);
-      const oldSrc = srcFor(id, quality);
+      const oldSrc = resolveVideoSrc(id, prevQuality);
       v.src = oldSrc;
       v.load();
-      v.currentTime = t;
-      if (wasPlaying) {
-        v.play().catch(() => {});
-      }
+      setQuality(prevQuality);
       setTimeout(() => setToast(""), 1600);
       v.removeEventListener("error", onError);
-      setQuality(quality);
     };
 
+    setToast(`Kalite değiştiriliyor: ${q}p…`);
+    setQuality(q);
+    setQualityOpen(false)
     v.src = newSrc;
     v.load();
     v.addEventListener("loadedmetadata", onLoaded, { once: true });
-    v.addEventListener("error", onError, { once: true });
+    v.addEventListener("error", onError);
   }
 
   return (

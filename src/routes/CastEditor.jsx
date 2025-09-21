@@ -3,13 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import CastTimelineEditor from "../components/CastTimelineEditor";
 import { xrayDemo } from "../data/xrayDemo";
 import { applyOverrides, saveCastSlots } from "../utils/castLocal";
+import { resolveSingleVideo, resolveVideoSrc } from "../utils/videoSource";
 
 /** kalite seçimi: 1080 → 720 → 480 (var olana düşer) */
 const PREFS = ["1080", "720", "480"];
-function srcFor(id, q) {
-  if (!id) return "";
-  return `/videos/${id}_${q}.mp4`;
-}
 
 export default function CastEditor() {
   const { id = "demo", castId = "" } = useParams();
@@ -26,7 +23,15 @@ export default function CastEditor() {
 
   // video kalite fallback
   const [prefIdx, setPrefIdx] = useState(0);
-  const [src, setSrc] = useState(srcFor(id, PREFS[prefIdx]));
+  const [src, setSrc] = useState(() => resolveVideoSrc(id, PREFS[0]));
+
+  useEffect(() => {
+    setPrefIdx(0);
+  }, [id]);
+
+  useEffect(() => {
+    setSrc(resolveVideoSrc(id, PREFS[prefIdx]));
+  }, [id, prefIdx]);
 
   // sayfa ilk açılış + her odaklanmada override’ları tazele
   useEffect(() => {
@@ -42,16 +47,21 @@ export default function CastEditor() {
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+    const fallbackSrc = resolveSingleVideo(id);
     const onError = () => {
-      if (prefIdx < PREFS.length - 1) {
-        const next = prefIdx + 1;
-        setPrefIdx(next);
-        setSrc(srcFor(id, PREFS[next]));
-      }
+      setPrefIdx((idx) => {
+        if (idx < PREFS.length - 1) {
+          return idx + 1;
+        }
+        if (fallbackSrc && fallbackSrc !== src) {
+          setSrc(fallbackSrc);
+        }
+        return idx;
+      });
     };
     v.addEventListener("error", onError);
     return () => v.removeEventListener("error", onError);
-  }, [prefIdx, id]);
+  }, [id, src]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#0f0f14", color: "#eee", padding: 24 }}>

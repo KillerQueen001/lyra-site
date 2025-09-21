@@ -6,8 +6,8 @@ const contents = {
     title: "Portal 2 Türkçe Dublaj",
     description: "Portal 2 için hazırlanan tam Türkçe dublaj projesi.",
     episodes: [
-      { id: 1, title: "Bölüm 1", video: "/watch/sample" },
-      { id: 2, title: "Bölüm 2", video: "/watch/sample" }
+      { id: 1, title: "Bölüm 1", video: "/watch/sample_720.mp4" },
+      { id: 2, title: "Bölüm 2", video: "/watch/sample_720.mp4" }
     ]
   },
   dyinglight: {
