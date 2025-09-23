@@ -1,11 +1,5 @@
 import { AnimatePresence, motion as Motion } from "framer-motion";
-
-const COLORS = {
-  card: "#1b1b24",
-  text: "#eee",
-  textMuted: "#bfb8d6",
-  border: "rgba(255,255,255,.14)",
-};
+import "./XRayPanel.css";
 
 // Kontrol barını kapatmaması için alt güvenli boşluk
 export const OVERLAY_BOTTOM_SAFE = 84;
@@ -28,31 +22,7 @@ export default function XRayPanel({
   emptyText = "Bu sahnede cast bulunamadı.",
 }) {
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: open ? "auto" : "none",
-        zIndex: 30,
-        overflow: "hidden", // 👈 overlay tarafında scroll ipucu çıkmasın
-      }}
-    >
-      {/* component-local CSS: liste scrollbar'ını gizle */}
-      <style
-        // benzersiz bir sınıf adıyla hedefliyoruz
-        dangerouslySetInnerHTML={{
-          __html: `
-            .xray-scroll {
-              scrollbar-width: none;         /* Firefox */
-              -ms-overflow-style: none;      /* IE/Edge legacy */
-            }
-            .xray-scroll::-webkit-scrollbar { /* Chrome/Safari */
-              display: none;
-            }
-          `,
-        }}
-      />
-
+    <div className={`xray-overlay${open ? " is-open" : ""}`}>
       {/* Soldan panel */}
       <AnimatePresence initial={false}>
         {open && (
@@ -62,39 +32,15 @@ export default function XRayPanel({
             animate={{ x: 0 }}
             exit={{ x: "-100%" }}
             transition={spring}
-            style={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: 360,
-              maxWidth: "90vw",
-              background:
-                "linear-gradient(180deg, rgba(0,0,0,.7) 0%, rgba(0,0,0,.45) 60%, rgba(0,0,0,.3) 100%)",
-              backdropFilter: "blur(6px)",
-              borderRight: `1px solid ${COLORS.border}`,
-              padding: 16,
-              boxSizing: "border-box",
-              pointerEvents: "auto",
-            }}
+            className="xray-panel"
           >
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div className="xray-header">
               <button
+                type="button"
                 aria-label="Paneli kapat"
                 onClick={onClose}
-                style={{
-                  width: 28,
-                  height: 28,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 999,
-                  border: `1px solid ${COLORS.border}`,
-                  background: "rgba(0,0,0,.25)",
-                  color: COLORS.text,
-                  cursor: "pointer",
-                }}
+                className="xray-close"
                 title="Kapat"
               >
                 {/* Ortalı chevron */}
@@ -108,9 +54,8 @@ export default function XRayPanel({
                   />
                 </svg>
               </button>
-
-              <div style={{ color: COLORS.text, fontWeight: 800, fontSize: 20 }}>Castlar</div>
-              <div style={{ marginLeft: "auto", color: COLORS.textMuted, fontSize: 12 }}>Tümü ▸</div>
+              <div className="xray-title">Castlar</div>
+              <div className="xray-see-all">Tümü ▸</div>
             </div>
 
             {/* Liste / durumlar */}
@@ -118,15 +63,11 @@ export default function XRayPanel({
               // parent'i de layout'lu yapıyoruz ki child'lar arası akış daha iyi çözülsün
               layout
               className="xray-scroll"
-              style={{
-                overflowY: "auto",
-                maxHeight: `calc(100% - 48px)`,
-                paddingRight: 6,
-              }}
               transition={spring}
             >
+
               {loading ? (
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="xray-skeleton-container">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <Motion.div
                       key={`skeleton-${i}`}
@@ -134,44 +75,12 @@ export default function XRayPanel({
                       animate={{ opacity: 1, y: 0, height: "auto", marginBottom: 10 }}
                       exit={{ opacity: 0, y: -8, height: 0, marginBottom: 0 }}
                       transition={fade}
-                      style={{
-                        overflow: "hidden", // height animasyonu için
-                        display: "grid",
-                        gridTemplateColumns: "64px 1fr",
-                        gap: 12,
-                        alignItems: "center",
-                        padding: "10px 8px",
-                        borderRadius: 10,
-                        border: `1px solid ${COLORS.border}`,
-                        background: "rgba(27,27,36,.55)",
-                      }}
+                      className="xray-skeleton-item"
                     >
-                      <div
-                        style={{
-                          width: 64,
-                          height: 64,
-                          borderRadius: 8,
-                          background: "rgba(255,255,255,.08)",
-                        }}
-                      />
+                    <div className="xray-skeleton-thumb" />
                       <div>
-                        <div
-                          style={{
-                            height: 16,
-                            width: "60%",
-                            borderRadius: 6,
-                            background: "rgba(255,255,255,.08)",
-                            marginBottom: 8,
-                          }}
-                        />
-                        <div
-                          style={{
-                            height: 12,
-                            width: "40%",
-                            borderRadius: 6,
-                            background: "rgba(255,255,255,.06)",
-                          }}
-                        />
+                        <div className="xray-skeleton-line" />
+                        <div className="xray-skeleton-subline" />
                       </div>
                     </Motion.div>
                   ))}
@@ -181,7 +90,7 @@ export default function XRayPanel({
                   initial={{ opacity: 0, y: 6, height: 0, marginBottom: 0 }}
                   animate={{ opacity: 1, y: 0, height: "auto", marginBottom: 0 }}
                   transition={fade}
-                  style={{ color: COLORS.textMuted, padding: "8px 2px", overflow: "hidden" }}
+                  className="xray-empty"
                 >
                   {emptyText}
                 </Motion.div>
@@ -195,17 +104,7 @@ export default function XRayPanel({
                       animate={{ opacity: 1, y: 0, scale: 1, height: "auto", marginBottom: 10 }}
                       exit={{ opacity: 0, y: -10, scale: 0.98, height: 0, marginBottom: 0 }}
                       transition={spring}
-                      style={{
-                        overflow: "hidden", // 👈 height animasyonu için şart
-                        display: "grid",
-                        gridTemplateColumns: "64px 1fr",
-                        gap: 12,
-                        alignItems: "center",
-                        padding: "10px 8px",
-                        borderRadius: 10,
-                        border: `1px solid ${COLORS.border}`,
-                        background: "rgba(27,27,36,.55)",
-                      }}
+                      className="xray-item"
                     >
                       <Motion.img
                         src={p.photo}
@@ -213,11 +112,11 @@ export default function XRayPanel({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={fade}
-                        style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8 }}
+                        className="xray-item-photo"
                       />
                       <div>
-                        <div style={{ color: COLORS.text, fontWeight: 700 }}>{p.name}</div>
-                        <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{p.role}</div>
+                        <div className="xray-item-name">{p.name}</div>
+                        <div className="xray-item-role">{p.role}</div>
                       </div>
                     </Motion.div>
                   ))}
@@ -241,15 +140,7 @@ export default function XRayPanel({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={fade}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: OVERLAY_BOTTOM_SAFE,
-              background: "linear-gradient(90deg, rgba(0,0,0,.5), rgba(0,0,0,0))",
-              pointerEvents: "auto",
-            }}
+            className="xray-overlay-backdrop"
           />
         )}
       </AnimatePresence>
@@ -259,27 +150,14 @@ export default function XRayPanel({
         {!open && (
           <Motion.button
             key="pull"
+            type="button"
             onClick={onClose}
             title="Castlar'ı aç"
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
             transition={fade}
-            style={{
-              position: "absolute",
-              left: 8,
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: 32,
-              height: 48,
-              borderRadius: 10,
-              border: `1px solid ${COLORS.border}`,
-              background: "rgba(0,0,0,.35)",
-              color: COLORS.text,
-              cursor: "pointer",
-              zIndex: 31,
-              pointerEvents: "auto",
-            }}
+            className="xray-pull"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path

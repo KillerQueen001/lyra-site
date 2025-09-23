@@ -4,19 +4,7 @@ import XRayPanel from "../components/XRayPanel";
 import { applyOverrides } from "../utils/castLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
 import { resolveSingleVideo, resolveVideoSrc, USE_SINGLE_MP4 } from "../utils/videoSource";
-
-
-/** Lyra renk paleti */
-const COLORS = {
-  bg: "rgba(18,18,24,0.88)",
-  card: "#1b1b24",
-  text: "#eee",
-  textMuted: "#bfb8d6",
-  accent: "#7c4bd9",
-  accentSoft: "#b598ff",
-  track: "#3a334a",
-  border: "rgba(255,255,255,.14)",
-};
+import "./Watch.css";
 
 const QUALITIES = ["480", "720", "1080"];
 
@@ -29,60 +17,13 @@ function formatTime(s) {
 
 /** ikon */
 function Icon({ src, alt }) {
-  return (
-    <img
-      src={src}
-      alt={alt || ""}
-      style={{ width: 28, height: 28, objectFit: "contain", display: "block" }}
-    />
-  );
+  return <img src={src} alt={alt || ""} className="watch-icon" />;
 }
 
-/** buton style */
-function btnStyle() {
-  return {
-    width: 42,
-    height: 42,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "50%",
-    border: "none",
-    background: "transparent",
-    cursor: "pointer",
-    transition: "background .18s ease",
-  };
-}
-function hoverize(e, on = true) {
-  e.currentTarget.style.background = on ? "rgba(124,75,217,0.18)" : "transparent";
-}
-
-/** menü */
-function dropdownStyle(open) {
-  return {
-    position: "absolute",
-    right: 0,
-    bottom: 42,
-    pointerEvents: open ? "auto" : "none",
-    opacity: open ? 1 : 0,
-    transform: open ? "translateY(0)" : "translateY(6px)",
-    transition: "opacity .16s ease, transform .16s ease",
-  };
-}
 function MenuCard({ title, children }) {
   return (
-    <div
-      style={{
-        minWidth: 140,
-        padding: 8,
-        borderRadius: 12,
-        border: `1px solid ${COLORS.border}`,
-        background: COLORS.card,
-        color: COLORS.text,
-        boxShadow: "0 12px 40px rgba(0,0,0,.35)",
-      }}
-    >
-      <div style={{ fontSize: 12, color: COLORS.textMuted, margin: "2px 6px 8px" }}>{title}</div>
+    <div className="watch-dropdown-card">
+      <div className="watch-dropdown-title">{title}</div>
       {children}
     </div>
   );
@@ -90,17 +31,9 @@ function MenuCard({ title, children }) {
 function MenuItem({ label, active, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      style={{
-        width: "100%",
-        textAlign: "left",
-        padding: "8px 10px",
-        borderRadius: 8,
-        border: "none",
-        background: active ? "rgba(124,75,217,.18)" : "transparent",
-        color: active ? COLORS.accentSoft : COLORS.text,
-        cursor: "pointer",
-      }}
+      className={`watch-menu-item${active ? " is-active" : ""}`}
     >
       {label} {active ? "✓" : ""}
     </button>
@@ -329,42 +262,37 @@ export default function Watch() {
     v.addEventListener("error", onError);
   }
 
+  const progress = duration ? (current / duration) * 100 : 0;
+  const hideCursor = !(controlsVisible || xrayOpen);
+
   return (
-    <div style={{ padding: 24 }}>
+    <div className="watch-page">
       <p>
-        <Link to="/" style={{ color: COLORS.accent }}>
+        <Link to="/" className="watch-back-link">
           ← Listeye dön
         </Link>
       </p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+      <div className="watch-header">
         <div>
-          <h1 style={{ margin: "12px 0", color: COLORS.text, fontSize: 36, fontWeight: 800 }}>
-            Player Sayfası
-          </h1>
-          <p style={{ marginBottom: 12, color: COLORS.text }}>
-            Video ID: <b style={{ color: COLORS.accent }}>{id}</b>
+          <h1 className="watch-title">Player Sayfası</h1>
+          <p className="watch-subtitle">
+            Video ID: <b className="watch-accent">{id}</b>
           </p>
         </div>
 
         {/* Kast yerleştir (yeni sekme) */}
         <button
+          type="button"
           onClick={() => window.open(`/cast/select/${id}`, "_blank", "noopener")}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: `1px solid ${COLORS.border}`,
-            background: COLORS.card,
-            color: COLORS.text,
-            cursor: "pointer",
-          }}
+          className="watch-open-cast-button"
         >
           Kast yerleştir
         </button>
       </div>
 
       {/* Player kabuğu */}
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+      <div className="watch-layout">
         <div
           onMouseMove={showControlsTemporarily}
           onMouseLeave={() => {
@@ -374,23 +302,14 @@ export default function Watch() {
             setControlsVisible(true);
             scheduleAutoHide();
           }}
-          style={{
-            position: "relative",
-            width: "100%",
-            maxWidth: 960,
-            borderRadius: 14,
-            overflow: "hidden",
-            boxShadow: "0 10px 40px rgba(0,0,0,.35)",
-            background: "#000",
-            cursor: controlsVisible || xrayOpen ? "default" : "none",
-          }}
+          className={`watch-player-shell${hideCursor ? " no-cursor" : ""}`}
         >
           <video
             ref={videoRef}
             src={src}
             controls={false}
             preload="metadata"
-            style={{ display: "block", width: "100%", height: "auto" }}
+            className="watch-video"
             onClick={togglePlay}
           />
 
@@ -399,105 +318,51 @@ export default function Watch() {
 
           {/* küçük toast */}
           {toast && (
-            <div
-              style={{
-                position: "absolute",
-                left: 12,
-                bottom: 70,
-                padding: "6px 10px",
-                borderRadius: 8,
-                background: "rgba(18,18,24,.9)",
-                color: "#eee",
-                fontSize: 12,
-                border: `1px solid ${COLORS.border}`,
-                zIndex: 5,
-              }}
-            >
-              {toast}
-            </div>
+            <div className="watch-toast">{toast}</div>
           )}
 
           {/* Kontrol barı */}
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              padding: "10px 12px 12px",
-              background: COLORS.bg,
-              backdropFilter: "blur(8px)",
-              borderTop: `1px solid ${COLORS.border}`,
-              color: COLORS.text,
-              opacity: controlsVisible ? 1 : 0,
-              pointerEvents: controlsVisible ? "auto" : "none",
-              transition: "opacity .25s ease",
-              zIndex: 40,
-            }}
-          >
+          <div className={`watch-controls${controlsVisible ? " is-visible" : ""}`}>
             {/* süre çubuğu */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "56px 1fr 56px",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
-              <div style={{ fontSize: 12, color: COLORS.textMuted }}>{formatTime(current)}</div>
+            <div className="watch-timeline">
+              <div className="watch-time">{formatTime(current)}</div>
+
               <input
-                className="range"
+                className="watch-range"
                 type="range"
                 min={0}
                 max={Math.max(duration, 0.1)}
                 step={0.1}
                 value={current}
                 onChange={(e) => onSeek(e.currentTarget.value)}
-                style={{
-                  width: "100%",
-                  background: `linear-gradient(90deg, ${COLORS.accent} ${
-                    (duration ? current / duration : 0) * 100
-                  }%, ${COLORS.track} 0)`,
-                }}
+                style={{ "--watch-progress": `${progress}%` }}
               />
-              <div style={{ fontSize: 12, color: COLORS.textMuted, textAlign: "right" }}>
-                {formatTime(duration)}
-              </div>
+              <div className="watch-time watch-time-right">{formatTime(duration)}</div>
             </div>
 
             {/* butonlar */}
-            <div
-              style={{
-                marginTop: 10,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                justifyContent: "space-between",
-              }}
-            >
+            <div className="watch-control-row">
               {/* sol */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="watch-control-group">
                 <button
+                  type="button"
                   onClick={togglePlay}
                   aria-label={playing ? "Duraklat" : "Oynat"}
-                  style={btnStyle()}
-                  onMouseEnter={(e) => hoverize(e, true)}
-                  onMouseLeave={(e) => hoverize(e, false)}
+                  className="watch-control-button"
                 >
                   <Icon src={playing ? "/icons/pause.png" : "/icons/play.png"} />
                 </button>
 
                 <button
+                  type="button"
                   onClick={toggleMute}
                   aria-label={muted ? "Sesi aç" : "Sesi kapat"}
-                  style={btnStyle()}
-                  onMouseEnter={(e) => hoverize(e, true)}
-                  onMouseLeave={(e) => hoverize(e, false)}
+                  className="watch-control-button"
                 >
                   <Icon src={muted ? "/icons/mute.png" : "/icons/volume.png"} />
                 </button>
                 <input
-                  className="range"
+                  className="watch-range watch-volume-range"
                   type="range"
                   min={0}
                   max={1}
@@ -508,47 +373,40 @@ export default function Watch() {
                 />
               </div>
 
-              <div style={{ flex: 1 }} />
+              <div className="watch-flex-spacer" />
 
               {/* sağ */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="watch-control-group">
                 {/* Castlar */}
                 <button
+                  type="button"
                   onClick={() => setXrayOpen((o) => !o)}
                   aria-label="Castlar"
-                  style={btnStyle()}
-                  onMouseEnter={(e) => hoverize(e, true)}
-                  onMouseLeave={(e) => hoverize(e, false)}
+                  className="watch-control-button"
                 >
                   <Icon src="/icons/cast.png" />
                 </button>
 
                 {/* hız */}
-                <div className="menu-speed" style={{ position: "relative" }}>
+                <div className="menu-speed">
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={() => { 
                       const next = !speedOpen;
                       setSpeedOpen(next);
                       clearHideTimer();
                       if (!next) scheduleAutoHide();
                     }}
                     aria-label="Hız"
-                    style={btnStyle()}
-                    onMouseEnter={(e) => hoverize(e, true)}
-                    onMouseLeave={(e) => hoverize(e, false)}
+                    className="watch-control-button"
                   >
                     <img
                       src="/icons/speed.png"
                       alt=""
-                      style={{
-                        width: 28,
-                        height: 28,
-                        transform: speedOpen ? "rotate(180deg)" : "rotate(0deg)",
-                        transition: "transform .18s",
-                      }}
+                      className={`watch-speed-icon${speedOpen ? " is-open" : ""}`}
                     />
                   </button>
-                  <div style={dropdownStyle(speedOpen)}>
+                  <div className={`watch-dropdown${speedOpen ? " is-open" : ""}`}>
                     <MenuCard title="Oynatma Hızı">
                       {[0.5, 1, 1.25, 1.5, 2].map((s) => (
                         <MenuItem
@@ -567,8 +425,9 @@ export default function Watch() {
                 </div>
 
                 {/* kalite */}
-                <div className="menu-quality" style={{ position: "relative" }}>
+                <div className="menu-quality">
                   <button
+                    type="button"
                     onClick={() => {
                       const next = !qualityOpen;
                       setQualityOpen(next);
@@ -576,13 +435,11 @@ export default function Watch() {
                       if (!next) scheduleAutoHide();
                     }}
                     aria-label="Kalite"
-                    style={btnStyle()}
-                    onMouseEnter={(e) => hoverize(e, true)}
-                    onMouseLeave={(e) => hoverize(e, false)}
+                    className="watch-control-button"
                   >
                     <Icon src="/icons/quality.png" />
                   </button>
-                  <div style={dropdownStyle(qualityOpen)}>
+                  <div className={`watch-dropdown${qualityOpen ? " is-open" : ""}`}>
                     <MenuCard title="Kalite">
                       {QUALITIES.map((q) => (
                         <MenuItem
@@ -599,11 +456,10 @@ export default function Watch() {
                 </div>
 
                 <button
+                  type="button"
+                  className="watch-control-button"
                   onClick={enterFs}
                   aria-label="Tam ekran"
-                  style={btnStyle()}
-                  onMouseEnter={(e) => hoverize(e, true)}
-                  onMouseLeave={(e) => hoverize(e, false)}
                 >
                   <Icon src="/icons/fullscreen.png" />
                 </button>
@@ -613,7 +469,7 @@ export default function Watch() {
         </div>
       </div>
 
-      <p style={{ marginTop: 10, color: COLORS.textMuted, fontSize: 12 }}>
+      <p className="watch-info-text">
         Kalite adlandırması: <code>{`/videos/${id}_480.mp4`}</code>, <code>_720</code>, <code>_1080</code>.
       </p>
     </div>
