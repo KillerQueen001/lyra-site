@@ -1,25 +1,19 @@
 // src/pages/ContentDetail.jsx
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
-
-const contents = {
-  portal2: {
-    title: "Portal 2 Türkçe Dublaj",
-    description: "Portal 2 için hazırlanan tam Türkçe dublaj projesi.",
-    episodes: [
-      { id: 1, title: "Bölüm 1", video: "/watch/sample_720.mp4" },
-      { id: 2, title: "Bölüm 2", video: "/watch/sample_720.mp4" }
-    ]
-  },
-  dyinglight: {
-    title: "Dying Light Türkçe Dublaj",
-    description: "Zombi kıyametinde seslendirme.",
-    episodes: [{ id: 1, title: "Bölüm 1", video: "/sample.mp4" }]
-  }
-};
+import { contents } from "../data/contents";
+import { getVideoEntry } from "../data/videoLibrary";
 
 export default function ContentDetail() {
   const { id } = useParams();
   const content = contents[id];
+  const enrichedEpisodes = useMemo(() => {
+    if (!content) return [];
+    return content.episodes.map((ep) => ({
+      ...ep,
+      video: getVideoEntry(ep.videoId),
+    }));
+  }, [content]);
 
   if (!content) {
     return <h1 style={{ color: "white", padding: "40px" }}>İçerik bulunamadı.</h1>;
@@ -32,11 +26,25 @@ export default function ContentDetail() {
 
       <h2>Bölümler</h2>
       <ul>
-        {content.episodes.map((ep) => (
+        {enrichedEpisodes.map((ep) => (
           <li key={ep.id}>
-            <a href={ep.video} target="_blank" rel="noreferrer" style={{ color: "#9b5de5" }}>
+            <a
+              href={`/watch/${ep.videoId}`}
+              style={{ color: "#9b5de5" }}
+            >
               {ep.title}
             </a>
+                        {ep.video ? (
+              <div style={{ fontSize: "0.85rem", opacity: 0.7 }}>
+                {ep.video.stream
+                  ? "HLS akışı"
+                  : ep.video.files?.single
+                  ? "MP4 dosyası"
+                  : "Kaynak tanımlanmadı"}
+              </div>
+            ) : (
+              <div style={{ fontSize: "0.85rem", opacity: 0.7 }}>Kaynak tanımlanmadı</div>
+            )}
           </li>
         ))}
       </ul>

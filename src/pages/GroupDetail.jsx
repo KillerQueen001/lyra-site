@@ -19,7 +19,7 @@ const groups = {
     banner: "/lavinia_banner.png",
     description: "Sesin şiirle buluştuğu an.",
     contents: [
-      { id: "lavinia-poem", title: "Şiir Dublaj Projesi", thumb: "/lavinia_banner.png" }
+      { id: "kuskasabasi", title: "Şiir Dublaj Projesi", thumb: "/lavinia_banner.png" }
     ]
   }
 };

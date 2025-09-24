@@ -3,7 +3,15 @@ import { Link, useParams } from "react-router-dom";
 import XRayPanel from "../components/XRayPanel";
 import { applyOverrides } from "../utils/castLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
-import { resolveSingleVideo, resolveVideoSrc, USE_SINGLE_MP4 } from "../utils/videoSource";
+import { findEpisodeByVideoId } from "../data/contents";
+import { getVideoEntry } from "../data/videoLibrary";
+import { loadHls } from "../utils/loadHls";
+import {
+  isHlsSource,
+  resolveSingleVideo,
+  resolveVideoSrc,
+  USE_SINGLE_MP4,
+} from "../utils/videoSource";
 import "./Watch.css";
 
 const QUALITIES = ["480", "720", "1080"];
@@ -42,10 +50,36 @@ function MenuItem({ label, active, onClick }) {
 
 export default function Watch() {
   const { id } = useParams();
-  const [quality, setQuality] = useState("720");
+  const videoEntry = useMemo(() => getVideoEntry(id), [id]);
+  const episodeInfo = useMemo(() => findEpisodeByVideoId(id), [id]);
+  const fileQualities = useMemo(() => {
+    if (!videoEntry?.files) return [];
+    return Object.keys(videoEntry.files)
+      .filter((key) => /^\d{3,4}$/.test(key))
+      .sort((a, b) => Number(b) - Number(a));
+  }, [videoEntry]);
+  const qualityOptions = useMemo(
+    () => (fileQualities.length ? fileQualities : QUALITIES),
+    [fileQualities]
+  );
+  const defaultQuality = useMemo(() => {
+    if (videoEntry?.defaultQuality) return videoEntry.defaultQuality;
+    if (qualityOptions.includes("720")) return "720";
+    return qualityOptions[0] || "720";
+  }, [videoEntry, qualityOptions]);
+  const [quality, setQuality] = useState(defaultQuality);
+  useEffect(() => {
+    setQuality(defaultQuality);
+  }, [defaultQuality]);
   const src = useMemo(() => resolveVideoSrc(id, quality), [id, quality]);
 
+  const isHls = useMemo(
+    () => isHlsSource(src) || (videoEntry?.stream ? isHlsSource(videoEntry.stream) : false),
+    [src, videoEntry]
+  );
+
   const videoRef = useRef(null);
+  const hlsRef = useRef(null);
 
   // durumlar
   const [playing, setPlaying] = useState(false);
@@ -60,6 +94,55 @@ export default function Watch() {
 
   const [qualityOpen, setQualityOpen] = useState(false);
   const [toast, setToast] = useState("");
+    const toastTimerRef = useRef(null);
+  const showToast = useCallback(
+    (message, duration = 1800) => {
+      setToast(message);
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      if (duration > 0) {
+        toastTimerRef.current = window.setTimeout(() => {
+          setToast("");
+          toastTimerRef.current = null;
+        }, duration);
+      } else {
+        toastTimerRef.current = null;
+      }
+    },
+    [setToast]
+  );
+
+  const allowQualityMenu = !isHls && qualityOptions.length > 1;
+  const headerTitle =
+    episodeInfo?.episode?.title || videoEntry?.title || "Player Sayfası";
+  const headerSubtitle = episodeInfo
+    ? `${episodeInfo.content.title}${
+        episodeInfo.episode?.id ? ` • Bölüm ${episodeInfo.episode.id}` : ""
+      }`
+    : videoEntry?.description || "";
+  const sourceLabel = isHls ? "HLS akışı" : "MP4 dosyası";
+  const qualityHint = isHls
+    ? "Bu video HLS (HTTP Live Streaming) formatında yayınlanıyor; kalite seçimi oynatıcı tarafından otomatik yapılır."
+    : videoEntry?.files
+    ? fileQualities.length
+      ? `Tanımlı kalite dosyaları: ${fileQualities
+          .map((q) => `${q}p`)
+          .join(", ")}${videoEntry.files.single ? " + ana MP4" : ""}.`
+      : "Bu video tek bir MP4 kaynağı ile yapılandırılmış durumda."
+    : `Varsayılan kalite adlandırması: /videos/${id}_480.mp4, _720, _1080.`;
+
+  useEffect(() => {
+    if (!allowQualityMenu) {
+      setQualityOpen(false);
+    }
+  }, [allowQualityMenu]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+  }, []);
 
   // X-Ray panel
   const [xrayOpen, setXrayOpen] = useState(false);
@@ -135,6 +218,69 @@ export default function Watch() {
     };
   }, [scheduleAutoHide, clearHideTimer]);
 
+    useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return undefined;
+
+    const detachHls = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    if (isHls) {
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        if (video.dataset.loadedSrc !== src) {
+          video.src = src;
+          video.load();
+          video.dataset.loadedSrc = src;
+        }
+        return () => {
+          detachHls();
+        };
+      }
+
+      let cancelled = false;
+
+      loadHls()
+        .then((HlsLib) => {
+          if (cancelled) return;
+          const HlsCtor = HlsLib?.default ?? HlsLib;
+          if (!HlsCtor || !HlsCtor.isSupported?.()) {
+            showToast("Tarayıcı HLS akışını desteklemiyor.", 3000);
+            return;
+          }
+          detachHls();
+          const instance = new HlsCtor();
+          hlsRef.current = instance;
+          instance.loadSource(src);
+          instance.attachMedia(video);
+          video.dataset.loadedSrc = src;
+        })
+        .catch(() => {
+          if (cancelled) return;
+          showToast("HLS kütüphanesi yüklenemedi.", 3000);
+        });
+
+      return () => {
+        cancelled = true;
+        detachHls();
+      };
+    }
+
+    detachHls();
+    if (video.dataset.loadedSrc !== src) {
+      video.src = src;
+      video.load();
+      video.dataset.loadedSrc = src;
+    }
+
+    return () => {
+      detachHls();
+    };
+  }, [src, isHls, showToast]);
+
   useEffect(() => {
     function refresh() {
       if (!id) return;
@@ -201,6 +347,13 @@ export default function Watch() {
 
   // kalite değiştir (pozisyonu koru)
   async function setQualityAndStay(q) {
+        if (!allowQualityMenu || isHls) {
+      setQualityOpen(false);
+      if (isHls) {
+        showToast("HLS akışında kalite otomatik yönetilir.", 2200);
+      }
+      return;
+    }
     if (!id || q === quality) {
       setQualityOpen(false);
       return;
@@ -218,8 +371,7 @@ export default function Watch() {
       setQuality(q);
       setQualityOpen(false);
       if (USE_SINGLE_MP4) {
-        setToast("Tek video kullanıldığı için kalite aynı dosyayla oynatılıyor.");
-        setTimeout(() => setToast(""), 1800);
+        showToast("Tek video kullanıldığı için kalite aynı dosyayla oynatılıyor.", 1800);
       }
       return;
     }
@@ -239,24 +391,27 @@ export default function Watch() {
     const onError = () => {
             if (!triedSingle && fallbackSrc && fallbackSrc !== newSrc) {
         triedSingle = true;
-        setToast(`${q}p varyasyonu bulunamadı, tek dosya açılıyor.`);
+        showToast(`${q}p varyasyonu bulunamadı, tek dosya açılıyor.`, 2200);
         v.src = fallbackSrc;
+        v.dataset.loadedSrc = fallbackSrc;
         v.load();
         return;
       }
-      setToast(`${q}p bulunamadı, geri dönüyorum.`);
+      showToast(`${q}p bulunamadı, geri dönüyorum.`, 1600);
       const oldSrc = resolveVideoSrc(id, prevQuality);
       v.src = oldSrc;
+      v.dataset.loadedSrc = oldSrc;      
       v.load();
       setQuality(prevQuality);
       setTimeout(() => setToast(""), 1600);
       v.removeEventListener("error", onError);
     };
 
-    setToast(`Kalite değiştiriliyor: ${q}p…`);
+    showToast(`Kalite değiştiriliyor: ${q}p…`, 1600);
     setQuality(q);
     setQualityOpen(false)
     v.src = newSrc;
+    v.dataset.loadedSrc = newSrc;    
     v.load();
     v.addEventListener("loadedmetadata", onLoaded, { once: true });
     v.addEventListener("error", onError);
@@ -275,10 +430,16 @@ export default function Watch() {
 
       <div className="watch-header">
         <div>
-          <h1 className="watch-title">Player Sayfası</h1>
+          <h1 className="watch-title">{headerTitle}</h1>
+          {headerSubtitle && (
+            <p className="watch-subtitle">{headerSubtitle}</p>
+          )}
           <p className="watch-subtitle">
             Video ID: <b className="watch-accent">{id}</b>
           </p>
+          <p className="watch-subtitle">
+            Kaynak: <b className="watch-accent">{sourceLabel}</b>
+          </p>         
         </div>
 
         {/* Kast yerleştir (yeni sekme) */}
@@ -306,11 +467,11 @@ export default function Watch() {
         >
           <video
             ref={videoRef}
-            src={src}
             controls={false}
             preload="metadata"
             className="watch-video"
             onClick={togglePlay}
+            poster={videoEntry?.poster}
           />
 
           {/* === Castlar Paneli (X-Ray) === */}
@@ -369,7 +530,7 @@ export default function Watch() {
                   step={0.01}
                   value={muted ? 0 : volume}
                   onChange={(e) => changeVol(e.currentTarget.value)}
-                  style={{ width: 120, background: COLORS.track }}
+
                 />
               </div>
 
@@ -429,6 +590,10 @@ export default function Watch() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (!allowQualityMenu) {
+                        showToast("HLS akışında kalite otomatik seçilir.", 2200);
+                        return;
+                      }                      
                       const next = !qualityOpen;
                       setQualityOpen(next);
                       clearHideTimer();
@@ -439,20 +604,22 @@ export default function Watch() {
                   >
                     <Icon src="/icons/quality.png" />
                   </button>
-                  <div className={`watch-dropdown${qualityOpen ? " is-open" : ""}`}>
-                    <MenuCard title="Kalite">
-                      {QUALITIES.map((q) => (
-                        <MenuItem
-                          key={q}
-                          active={q === quality}
-                          label={`${q}p`}
-                          onClick={() => {
-                            setQualityAndStay(q);
-                          }}
-                        />
-                      ))}
-                    </MenuCard>
-                  </div>
+                  {allowQualityMenu && (
+                    <div className={`watch-dropdown${qualityOpen ? " is-open" : ""}`}>
+                      <MenuCard title="Kalite">
+                        {qualityOptions.map((q) => (
+                          <MenuItem
+                            key={q}
+                            active={q === quality}
+                            label={`${q}p`}
+                            onClick={() => {
+                              setQualityAndStay(q);
+                            }}
+                          />
+                        ))}
+                      </MenuCard>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -469,9 +636,12 @@ export default function Watch() {
         </div>
       </div>
 
-      <p className="watch-info-text">
-        Kalite adlandırması: <code>{`/videos/${id}_480.mp4`}</code>, <code>_720</code>, <code>_1080</code>.
-      </p>
+      <p className="watch-info-text">{qualityHint}</p>
+      {src && (
+        <p className="watch-info-text">
+          Aktif kaynak: <code>{src}</code>
+        </p>
+      )}
     </div>
   );
 }

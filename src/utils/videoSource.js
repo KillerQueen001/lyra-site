@@ -1,6 +1,43 @@
+import { getVideoEntry } from "../data/videoLibrary";
+
 const QUALITY_SUFFIX_RE = /_(\d{3,4})$/;
 
 export const USE_SINGLE_MP4 = import.meta.env.VITE_USE_SINGLE_MP4 !== "0";
+
+export function isHlsSource(src) {
+  if (!src) return false;
+  return /\.m3u8(\?.*)?$/i.test(src);
+}
+
+function pickFromLibrary(id, quality) {
+  const entry = getVideoEntry(id);
+  if (!entry) return null;
+
+  const { files, stream, url, defaultQuality } = entry;
+
+  if (files) {
+    if (quality && files[quality]) return files[quality];
+    if (defaultQuality && files[defaultQuality]) return files[defaultQuality];
+
+    const single = files.single || files.default;
+    if (single) return single;
+
+    const numericKeys = Object.keys(files).filter((key) => /^\d{3,4}$/.test(key));
+    numericKeys.sort((a, b) => Number(b) - Number(a));
+    for (const key of numericKeys) {
+      const value = files[key];
+      if (value) return value;
+    }
+
+    const first = Object.values(files).find(Boolean);
+    if (first) return first;
+  }
+
+  if (stream) return stream;
+  if (url) return url;
+  return null;
+}
+
 
 function parseVideoId(id) {
   if (id == null) return null;
@@ -45,6 +82,9 @@ function joinVideosPath(path) {
 }
 
 export function resolveVideoSrc(id, quality = "720") {
+  const librarySrc = pickFromLibrary(id, quality);
+  if (librarySrc) return librarySrc;
+
   const parsed = parseVideoId(id);
   if (!parsed) return "";
   if (parsed.type === "url" || parsed.type === "absolute") {
@@ -52,9 +92,10 @@ export function resolveVideoSrc(id, quality = "720") {
   }
 
   const { base, ext, baseWithoutQuality, qualityFromName } = parsed;
+  const normalizedBase = baseWithoutQuality || base;
 
   if (USE_SINGLE_MP4) {
-    return joinVideosPath(`${base}${ext}`);
+    return joinVideosPath(`${normalizedBase}${ext}`);
   }
 
   const desired = quality || qualityFromName;
@@ -74,16 +115,49 @@ export function resolveVideoSrc(id, quality = "720") {
 }
 
 export function resolveSingleVideo(id) {
+  const entrySrc = pickFromLibrary(id);
+  if (entrySrc) return entrySrc;
+
   const parsed = parseVideoId(id);
   if (!parsed) return "";
   if (parsed.type === "url" || parsed.type === "absolute") {
     return parsed.value;
   }
 
-  return joinVideosPath(`${parsed.base}${parsed.ext}`);
+  const { base, baseWithoutQuality, ext } = parsed;
+  const normalizedBase = baseWithoutQuality || base;
+
+  return joinVideosPath(`${normalizedBase}${ext}`);
 }
 
 export function resolveVideoCandidates(id, quality, fallbackQualities = []) {
+  const entry = getVideoEntry(id);
+  if (entry) {
+    const { files, stream, url } = entry;
+    const list = [];
+    const push = (value) => {
+      if (value && !list.includes(value)) {
+        list.push(value);
+      }
+    };
+
+    if (files) {
+      const keys = [quality, ...(fallbackQualities || [])].filter(Boolean);
+      for (const key of keys) {
+        if (files[key]) push(files[key]);
+      }
+      if (files.single) push(files.single);
+      if (files.default) push(files.default);
+      for (const value of Object.values(files)) {
+        push(value);
+      }
+    }
+    if (stream) push(stream);
+    if (url) push(url);
+    if (list.length) return list;
+  }
+
+
   const parsed = parseVideoId(id);
   if (!parsed) return [];
   if (parsed.type === "url" || parsed.type === "absolute") {
@@ -91,6 +165,7 @@ export function resolveVideoCandidates(id, quality, fallbackQualities = []) {
   }
 
   const { base, ext, baseWithoutQuality, qualityFromName } = parsed;
+  const normalizedBase = baseWithoutQuality || base;
   const candidates = [];
 
   const push = (path) => {
@@ -101,7 +176,7 @@ export function resolveVideoCandidates(id, quality, fallbackQualities = []) {
   };
 
   if (USE_SINGLE_MP4) {
-    push(`${base}${ext}`);
+      push(`${normalizedBase}${ext}`);
   }
 
   const list = [quality, ...fallbackQualities].filter(Boolean);

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import CastTimelineEditor from "../components/CastTimelineEditor";
 import { xrayDemo } from "../data/xrayDemo";
+import { getVideoEntry } from "../data/videoLibrary";
 import { applyOverrides, saveCastSlots } from "../utils/castLocal";
-import { resolveSingleVideo, resolveVideoSrc } from "../utils/videoSource";
+import { loadHls } from "../utils/loadHls";
+import { isHlsSource, resolveSingleVideo, resolveVideoSrc } from "../utils/videoSource";
 
 /** kalite seçimi: 1080 → 720 → 480 (var olana düşer) */
 const PREFS = ["1080", "720", "480"];
@@ -12,7 +14,9 @@ export default function CastEditor() {
   const { id = "demo", castId = "" } = useParams();
   const nav = useNavigate();
 
+  const videoEntry = useMemo(() => getVideoEntry(id), [id]);
   const videoRef = useRef(null);  
+  const hlsRef = useRef(null);
 
   // xrayDemo + local overrides birleşik liste
   const [list, setList] = useState(() => applyOverrides(id, xrayDemo));
@@ -24,7 +28,11 @@ export default function CastEditor() {
   // video kalite fallback
   const [prefIdx, setPrefIdx] = useState(0);
   const [src, setSrc] = useState(() => resolveVideoSrc(id, PREFS[0]));
-
+  const isHls = useMemo(
+    () => isHlsSource(src) || (videoEntry?.stream ? isHlsSource(videoEntry.stream) : false),
+    [src, videoEntry]
+  );
+  const [playerMessage, setPlayerMessage] = useState("");
   useEffect(() => {
     setPrefIdx(0);
   }, [id]);
@@ -34,6 +42,71 @@ export default function CastEditor() {
   }, [id, prefIdx]);
 
   // sayfa ilk açılış + her odaklanmada override’ları tazele
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return undefined;
+
+    const detach = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    if (isHls) {
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        if (video.dataset.loadedSrc !== src) {
+          video.src = src;
+          video.dataset.loadedSrc = src;
+          video.load();
+        }
+        setPlayerMessage("");
+        return () => detach();
+      }
+
+      let cancelled = false;
+
+      loadHls()
+        .then((HlsLib) => {
+          if (cancelled) return;
+          const HlsCtor = HlsLib?.default ?? HlsLib;
+          if (!HlsCtor || !HlsCtor.isSupported?.()) {
+            setPlayerMessage("Tarayıcı HLS akışını desteklemiyor.");
+            return;
+          }
+          detach();
+          const instance = new HlsCtor();
+          hlsRef.current = instance;
+          instance.loadSource(src);
+          instance.attachMedia(video);
+          video.dataset.loadedSrc = src;
+          setPlayerMessage("");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setPlayerMessage("HLS kütüphanesi yüklenemedi.");
+        });
+
+      return () => {
+        cancelled = true;
+        detach();
+      };
+    }
+
+    detach();
+    setPlayerMessage("");
+    if (video.dataset.loadedSrc !== src) {
+      video.src = src;
+      video.dataset.loadedSrc = src;
+      video.load();
+    }
+
+    return () => {
+      detach();
+    };
+  }, [src, isHls]);
+
+
   useEffect(() => {
     function refresh() {
       setList(applyOverrides(id, xrayDemo));
@@ -63,6 +136,14 @@ export default function CastEditor() {
     return () => v.removeEventListener("error", onError);
   }, [id, src]);
 
+  useEffect(() => () => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+  }, []);
+
+
   return (
     <div style={{ minHeight: "100vh", background: "#0f0f14", color: "#eee", padding: 24 }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
@@ -78,20 +159,47 @@ export default function CastEditor() {
 
         {/* video + editor */}
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          <video
-            ref={videoRef}
-            src={src}
-            controls
-            preload="metadata"
-            style={{
-              width: 640,
-              maxWidth: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,.12)",
-              background: "#000",
-              display: "block",
-            }}
-          />
+          <div style={{ width: 640, maxWidth: "100%" }}>
+            <video
+              ref={videoRef}
+              controls
+              preload="metadata"
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "#000",
+                display: "block",
+              }}
+              poster={videoEntry?.poster}
+            />
+            <div style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: "#bfb8d6",
+            }}>
+              Kaynak: <strong>{isHls ? "HLS akışı" : "MP4 dosyası"}</strong>
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: "#bfb8d6",
+                wordBreak: "break-all",
+              }}
+            >
+              Aktif kaynak: <code>{src}</code>
+            </div>
+            {playerMessage && (
+              <div style={{
+                marginTop: 4,
+                fontSize: 13,
+                color: "#f8d57e",
+              }}>
+                {playerMessage}
+              </div>
+            )}
+          </div>
           <div style={{ flex: 1 }}>
             {me && (
               <CastTimelineEditor
