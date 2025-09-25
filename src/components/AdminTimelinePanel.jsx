@@ -107,8 +107,13 @@ export default function AdminTimelinePanel({
     meta: null,
   });
 
-  const duration = videoRef.current?.duration ?? 0;
-  const currentTime = videoRef.current?.currentTime ?? 0;
+  const videoEl = videoRef.current;
+  const duration = videoEl && typeof videoEl.duration === "number" && !Number.isNaN(videoEl.duration)
+    ? videoEl.duration
+    : 0;
+  const currentTime = videoEl && typeof videoEl.currentTime === "number" && !Number.isNaN(videoEl.currentTime)
+    ? videoEl.currentTime
+    : 0;
 
   // Bulk import UI
   const [importOpen, setImportOpen] = useState(false);
@@ -271,7 +276,8 @@ export default function AdminTimelinePanel({
         const next = [...prev];
         const s = { ...next[hitIdx] };
         if (appliedMeta.cast) {
-          const setCast = new Set([...(s.cast ?? []), appliedMeta.cast]);
+          const existingCast = Array.isArray(s.cast) ? s.cast : [];
+          const setCast = new Set([...existingCast, appliedMeta.cast]);
           s.cast = [...setCast];
         }
         if (appliedMeta.kind && KIND_NAMES.includes(appliedMeta.kind)) {
@@ -296,7 +302,7 @@ export default function AdminTimelinePanel({
         color:
           appliedMeta.kind && KIND_NAMES.includes(appliedMeta.kind)
             ? KIND_COLORS[appliedMeta.kind]
-            : pickColor()
+            : pickColor(),
       };
       return [...prev, newSlot].sort((a, b) => a.start - b.start);
     });
@@ -308,7 +314,10 @@ export default function AdminTimelinePanel({
   }
 
   function addFromCurrent(seconds = 2) {
-    const t = videoRef.current?.currentTime ?? 0;
+    const video = videoRef.current;
+    const t = video && typeof video.currentTime === "number" && !Number.isNaN(video.currentTime)
+      ? video.currentTime
+      : 0;
     const start = snap(clamp(t, 0, Math.max(0, duration - MIN_LEN)));
     const end = snap(clamp(t + seconds, start + MIN_LEN, duration));
     const newSlot = {
@@ -385,7 +394,15 @@ export default function AdminTimelinePanel({
 
     const next = [...slots];
     const s = { ...next[idx] };
-    const len = (dragStartSnapshot?.end ?? 0) - (dragStartSnapshot?.start ?? 0);
+    const startSnapshot =
+      dragStartSnapshot && typeof dragStartSnapshot.start === "number"
+        ? dragStartSnapshot.start
+        : 0;
+    const endSnapshot =
+      dragStartSnapshot && typeof dragStartSnapshot.end === "number"
+        ? dragStartSnapshot.end
+        : 0;
+    const len = endSnapshot - startSnapshot;
 
     if (dragMode === "move") {
       const x = mouseX - dragOffset;
@@ -483,11 +500,14 @@ export default function AdminTimelinePanel({
                 : hasKind
                 ? KIND_COLORS[kind]
                 : pickColor();
+            const safeStart = raw.start == null ? 0 : raw.start;
+            const safeEnd = raw.end == null ? 0 : raw.end;
+            const safeLabel = typeof raw.label === "string" ? raw.label : "";
             return {
               id: typeof raw.id === "string" && raw.id ? raw.id : guid(),
-              start: Number(raw.start ?? 0),
-              end: Number(raw.end ?? 0),
-              label: typeof raw.label === "string" ? raw.label : "",
+              start: Number(safeStart),
+              end: Number(safeEnd),
+              label: safeLabel,
               cast,
               kind,
               color,
@@ -512,12 +532,14 @@ export default function AdminTimelinePanel({
         const hasHeader = rows[0][0].toLowerCase().includes("start");
         const dataRows = hasHeader ? rows.slice(1) : rows;
         return dataRows.map((cols) => {
-          const start = Number(cols[0] ?? 0);
-          const end = Number(cols[1] ?? Math.max(0, start + 1));
-          const label = cols[2] ?? "";
-          const cast = normalizeCast(cols[3] ?? "");
+          const rawStart = cols[0];
+          const rawEnd = cols[1];
+          const start = Number(rawStart == null || rawStart === "" ? 0 : rawStart);
+          const end = Number(rawEnd == null || rawEnd === "" ? Math.max(0, start + 1) : rawEnd);
+          const label = cols[2] == null ? "" : cols[2];
+          const cast = normalizeCast(cols[3] == null ? "" : cols[3]);
           const kindRaw = cols[4];
-          const kind = normalizeKind(kindRaw ?? "dialogue");
+          const kind = normalizeKind(kindRaw == null ? "dialogue" : kindRaw);
           const hasKind = typeof kindRaw === "string" && KIND_NAMES.includes(kindRaw);
           return {
             id: guid(),
@@ -655,7 +677,11 @@ export default function AdminTimelinePanel({
             </button>
             <button
               className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
-              onClick={() => onSave?.(slots)}
+              onClick={() => {
+                if (typeof onSave === "function") {
+                  onSave(slots);
+                }
+              }}
             >
               Kaydet
             </button>
@@ -730,14 +756,14 @@ export default function AdminTimelinePanel({
               />
               <FieldText
                 label="Etiket"
-                value={selected.label ?? ""}
+                value={selected.label == null ? "" : selected.label}
                 onChange={(v) => updateSelected({ label: v })}
                 placeholder="örn. Replik 3"
               />
               <div className="flex items-center gap-2">
                 <label className="w-16 opacity-70 text-xs">Cast</label>
                 <CastEditor
-                  value={selected.cast ?? []}
+                  value={Array.isArray(selected.cast) ? selected.cast : []}
                   onChange={(next) => updateSelected({ cast: next })}
                   suggestions={paletteCast}
                 />
@@ -746,7 +772,7 @@ export default function AdminTimelinePanel({
                 <label className="w-16 opacity-70 text-xs">Tür</label>
                 <select
                   className="rounded border border-white/10 bg-[#0f0f14] px-2 py-1 text-sm"
-                  value={selected.kind ?? "dialogue"}
+                  value={selected.kind == null || selected.kind === "" ? "dialogue" : selected.kind}
                   onChange={(e) => {
                     const k = normalizeKind(e.target.value);
                     updateSelected({ kind: k, color: KIND_COLORS[k] });
@@ -764,7 +790,7 @@ export default function AdminTimelinePanel({
                 <input
                   type="color"
                   className="h-8 w-12 bg-transparent"
-                  value={selected.color ?? "#7c4bd9"}
+                  value={selected.color == null || selected.color === "" ? "#7c4bd9" : selected.color}
                   onChange={(e) => updateSelected({ color: e.target.value })}
                 />
               </div>
@@ -899,7 +925,12 @@ function SlotView({ slot, selected, toX, onMouseDown }) {
   const left = toX(slot.start);
   const right = toX(slot.end);
   const w = Math.max(2, right - left);
-  const color = slot.color ?? (slot.kind ? KIND_COLORS[slot.kind] : "#7c4bd9");
+  const color =
+    slot.color && slot.color !== ""
+      ? slot.color
+      : slot.kind && KIND_COLORS[slot.kind]
+      ? KIND_COLORS[slot.kind]
+      : "#7c4bd9";
 
   return (
     <div
@@ -921,7 +952,7 @@ function SlotView({ slot, selected, toX, onMouseDown }) {
       />
       <div className="px-2 py-1 text-[11px] text-white/90 truncate">
         <div className="font-semibold truncate">{slot.label || slot.kind || "(Etiketsiz)"}</div>
-        <div className="text-white/80 truncate">{slot.cast?.join(", ")}</div>
+        <div className="text-white/80 truncate">{Array.isArray(slot.cast) ? slot.cast.join(", ") : ""}</div>
         <div className="text-white/70">
           {secondsToTime(slot.start)} – {secondsToTime(slot.end)}
         </div>
@@ -1030,7 +1061,6 @@ function CastEditor({ value, onChange }) {
 const DEFAULT_CAST_PALETTE = [
   "Hannah",
   "Mert",
-  "Ayşe",
   "John",
   "SFX-Drone",
   "Crowd",
