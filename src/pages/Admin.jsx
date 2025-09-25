@@ -38,6 +38,17 @@ function slugify(value) {
     .slice(0, 24);
 }
 
+function ensureCastId(name, role, existingIds) {
+  const base = slugify(name || role || "cast") || "cast";
+  let candidate = base;
+  let counter = 1;
+  while (!candidate || existingIds.has(candidate)) {
+    candidate = `${base || "cast"}-${counter}`;
+    counter += 1;
+  }
+  return candidate;
+}
+
 function ensureColor(map, key, indexRef) {
   if (map.has(key)) return map.get(key);
   const color = COLOR_WHEEL[indexRef.current % COLOR_WHEEL.length];
@@ -206,7 +217,11 @@ export default function Admin() {
   const [videoMeta, setVideoMeta] = useState({ title: "", description: "", poster: "" });
   const [metaStatus, setMetaStatus] = useState("idle");
   const [metaLoading, setMetaLoading] = useState(false);
-  const [showTimeline, setShowTimeline] = useState(false);
+  const [castEditorId, setCastEditorId] = useState(null);
+  const [castForm, setCastForm] = useState({ id: null, name: "", role: "", photo: "" });
+  const [castStatus, setCastStatus] = useState("idle");
+
+  const castStatusTimerRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -262,8 +277,29 @@ export default function Admin() {
   }, [activeSection, videoEntry?.description, videoEntry?.poster, videoEntry?.title, videoId]);
 
   useEffect(() => {
-    setShowTimeline(false);
-  }, [videoId, activeSection]);
+    if (!castEditorId) {
+      setCastForm({ id: null, name: "", role: "", photo: "" });
+      return;
+    }
+    const entry = casts.find((item) => item.id === castEditorId);
+    if (!entry) {
+      setCastEditorId(null);
+      setCastForm({ id: null, name: "", role: "", photo: "" });
+      return;
+    }
+    setCastForm({
+      id: entry.id,
+      name: entry.name || "",
+      role: entry.role || "",
+      photo: entry.photo || "",
+    });
+  }, [castEditorId, casts]);
+
+  useEffect(() => {
+    setCastEditorId(null);
+    setCastForm({ id: null, name: "", role: "", photo: "" });
+    setCastStatus("idle");
+  }, [videoId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -362,6 +398,10 @@ export default function Admin() {
       window.clearTimeout(metaSaveTimerRef.current);
       metaSaveTimerRef.current = null;
     }
+    if (castStatusTimerRef.current) {
+      window.clearTimeout(castStatusTimerRef.current);
+      castStatusTimerRef.current = null;
+    }    
   }, []);
 
   const timelineSlots = useMemo(() => flattenXrayToTimeline(casts), [casts]);
@@ -460,6 +500,97 @@ export default function Admin() {
     }
   }, [videoEntry?.description, videoEntry?.poster, videoEntry?.title, videoId]);
 
+  const handleCastFieldChange = useCallback((field, value) => {
+    setCastForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleCastSelect = useCallback((id) => {
+    setCastEditorId(id);
+    setCastStatus("idle");
+  }, []);
+
+  const handleCastStartNew = useCallback(() => {
+    setCastEditorId(null);
+    setCastForm({ id: null, name: "", role: "", photo: "" });
+    setCastStatus("idle");
+  }, []);
+
+  const handleCastSubmit = useCallback(
+    (event) => {
+      if (event) event.preventDefault();
+      const name = (castForm.name || "").trim();
+      const role = (castForm.role || "").trim();
+      const photo = (castForm.photo || "").trim();
+      if (!name && !role) {
+        setCastStatus("error");
+        if (castStatusTimerRef.current) {
+          window.clearTimeout(castStatusTimerRef.current);
+        }
+        castStatusTimerRef.current = window.setTimeout(() => {
+          setCastStatus("idle");
+        }, 2400);
+        return;
+      }
+
+      let createdId = castForm.id || null;
+      setCasts((prev) => {
+        if (castForm.id) {
+          return prev.map((item) => {
+            if (item.id !== castForm.id) return item;
+            const oldDisplay = buildDisplayName(item);
+            const updated = {
+              ...item,
+              name,
+              role,
+              photo,
+            };
+            const newDisplay = buildDisplayName(updated);
+            const updatedSlots = (item.slots || []).map((slot) => {
+              const castList = Array.isArray(slot.cast) ? slot.cast : [];
+              const replaced = castList.map((entry) =>
+                entry === oldDisplay ? newDisplay : entry
+              );
+              const normalized = replaced.length
+                ? [...new Set(replaced)]
+                : [newDisplay];
+              return {
+                ...slot,
+                label: slot.label === oldDisplay ? newDisplay : slot.label,
+                cast: normalized,
+              };
+            });
+            return { ...updated, slots: updatedSlots };
+          });
+        }
+
+        const existingIds = new Set(prev.map((item) => item.id));
+        const newId = ensureCastId(name, role, existingIds);
+        createdId = newId;
+        const newEntry = {
+          id: newId,
+          name,
+          role,
+          photo,
+          slots: [],
+        };
+        return [...prev, newEntry];
+      });
+
+      const nextId = createdId || castForm.id;
+      setCastEditorId(nextId);
+      setCastForm({ id: nextId, name, role, photo });
+      const nextStatus = castForm.id ? "updated" : "added";
+      setCastStatus(nextStatus);
+      if (castStatusTimerRef.current) {
+        window.clearTimeout(castStatusTimerRef.current);
+      }
+      castStatusTimerRef.current = window.setTimeout(() => {
+        setCastStatus("idle");
+      }, 2400);
+    },
+    [castForm]
+  );
+
   const metaStatusText = useMemo(() => {
     switch (metaStatus) {
       case "saving":
@@ -474,6 +605,19 @@ export default function Admin() {
         return "";
     }
   }, [metaStatus]);
+
+  const castStatusText = useMemo(() => {
+    switch (castStatus) {
+      case "added":
+        return "Yeni cast eklendi.";
+      case "updated":
+        return "Cast bilgileri güncellendi.";
+      case "error":
+        return "Lütfen isim veya rol bilgisi girin.";
+      default:
+        return "";
+    }
+  }, [castStatus]);
 
   return (
     <div className="min-h-screen bg-[#0f0f14] text-[#eee] py-8">
@@ -515,22 +659,22 @@ export default function Admin() {
             </section>
           </div>
         ) : (
-          <div className="space-y-6">
-            <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-8">
+            <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-3">
                 <button
                   type="button"
-                  className="text-xs text-[#9da1c1] hover:text-[#c6cbff] inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 text-xs text-[#9da1c1] hover:text-[#c6cbff]"
                   onClick={() => setActiveSection("overview")}
                 >
                   <span aria-hidden="true">←</span>
                   Panele dön
                 </button>
-                <div>
-                  <h1 className="text-3xl font-semibold">Video Yönetimi</h1>
-                  <p className="text-sm text-[#bfb8d6] mt-1">
-                    Videoların metinlerini güncelleyin, önizleyin ve gerekli olduğunda cast
-                    yerleştirme panelini açın.
+                <div className="space-y-1">
+                  <h1 className="text-3xl font-semibold text-[#f4f3ff]">Video Çalışma Alanı</h1>
+                  <p className="text-sm text-[#bfb8d6]">
+                    Videoyu izlerken zaman çizelgesine cast yerleştirin, meta verileri ve oyuncu kütüphanesini
+                    yönetin.
                   </p>
                 </div>
               </div>
@@ -540,7 +684,7 @@ export default function Admin() {
                 </label>
                 <select
                   id="admin-video-select"
-                  className="bg-[#1b1b24] border border-white/10 rounded-lg px-3 py-2 text-sm"
+                  className="bg-[#1b1b24] border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-[#5b4bff] focus:outline-none"
                   value={videoId}
                   onChange={(e) => setVideoId(e.target.value)}
                 >
@@ -553,109 +697,107 @@ export default function Admin() {
               </div>
             </header>
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.85fr)]">
-              <div className="space-y-6">
-                <div className="rounded-xl border border-white/10 bg-[#1b1b24] overflow-hidden">
-                  <div className="p-4 border-b border-white/10 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold">Video Önizleme</h2>
-                      <p className="text-xs text-[#bfb8d6]">
-                        Kaynak: <span className="font-medium">{isHls ? "HLS Akışı" : "MP4"}</span> —
-                        Kalite: {currentQuality || "-"}
-                      </p>
-                    </div>
-                    {allowQualitySelection && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-[#bfb8d6]">Kalite</span>
-                        <select
-                          className="bg-[#0f0f14] border border-white/10 rounded px-2 py-1"
-                          value={currentQuality}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            const idx = qualityOptions.indexOf(value);
-                            setPrefIdx(idx === -1 ? 0 : idx);
-                          }}
-                        >
-                          {qualityOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}p
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4 space-y-3">
+            <div className="grid gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+              <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(160deg,#19192d,#0d0d16)] p-6 md:p-8 shadow-[0_20px_50px_rgba(10,10,20,0.45)]">
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
-                      <h3 className="text-xl font-medium">{metaTitle}</h3>
-                      <p className="text-sm text-[#bfb8d6] leading-relaxed">{metaDescription}</p>
+                      <p className="text-xs uppercase tracking-[0.3em] text-[#7a75a5]">Video Önizleme</p>
+                      <h2 className="text-2xl font-semibold text-white">{metaTitle}</h2>
+                      <p className="text-sm text-[#bfb8d6] leading-relaxed max-w-xl">{metaDescription}</p>
                     </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-[#bfb8d6]">
+                      <span className="rounded-full border border-white/10 px-3 py-1.5 bg-white/5">
+                        {isHls ? "HLS Akışı" : "Dosya"}
+                      </span>
+                      <span className="rounded-full border border-white/10 px-3 py-1.5 bg-white/5">
+                        {currentQuality ? `${currentQuality}${isHls ? "" : "p"}` : "Kalite bilinmiyor"}
+                      </span>
+                      {allowQualitySelection && (
+                        <label className="flex items-center gap-2">
+                          <span>Kalite</span>
+                          <select
+                            className="bg-[#0f0f14] border border-white/10 rounded px-2 py-1 focus:border-[#5b4bff] focus:outline-none"
+                            value={currentQuality}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              const idx = qualityOptions.indexOf(value);
+                              setPrefIdx(idx === -1 ? 0 : idx);
+                            }}
+                          >
+                            {qualityOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}p
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_15px_40px_rgba(5,5,15,0.6)]">
                     <video
                       ref={videoRef}
                       controls
                       preload="metadata"
-                      className="w-full rounded-lg border border-white/10 bg-black"
+                      className="w-full h-full"
                       poster={metaPoster || undefined}
                     />
-                    <div className="text-xs text-[#bfb8d6] break-words">
-                      Kaynak yolu: <code>{src}</code>
-                    </div>
                     {playerMessage && (
-                      <div className="text-xs text-amber-300">{playerMessage}</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-[#1b1b24]">
-                  <div className="p-4 border-b border-white/10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <h2 className="text-lg font-semibold">Cast Yerleştirme</h2>
-                      <p className="text-xs text-[#bfb8d6]">Toplam {totalSlots} slot listelenmiş.</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-[#bfb8d6]">
-                      {saveState === "saving" && <span className="text-amber-300">Kaydediliyor…</span>}
-                      {saveState === "saved" && <span className="text-emerald-400">Kaydedildi ✓</span>}
-                      {saveState === "error" && <span className="text-red-400">Kaydetme hatası</span>}
-                      <button
-                        type="button"
-                        className="rounded-md border border-white/20 px-3 py-1 font-medium text-[#eee] hover:border-white/40"
-                        onClick={() => setShowTimeline((value) => !value)}
-                      >
-                        {showTimeline ? "Paneli Gizle" : "Paneli Aç"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    {showTimeline ? (
-                      loadingTimeline ? (
-                        <div className="text-sm text-[#bfb8d6]">Zaman çizelgesi yükleniyor…</div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <AdminTimelinePanel
-                            videoRef={videoRef}
-                            initialSlots={timelineSlots}
-                            onSave={handleSave}
-                            castPalette={castPalette}
-                          />
-                        </div>
-                      )
-                    ) : (
-                      <div className="text-sm text-[#bfb8d6]">
-                        Cast yerleştirme paneli kapalı. Düzenlemeye başlamak için "Paneli Aç" butonuna
-                        tıklayın.
+                      <div className="absolute bottom-4 left-4 right-4 rounded-xl bg-black/70 px-4 py-3 text-xs text-amber-300 backdrop-blur">
+                        {playerMessage}
                       </div>
                     )}
                   </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[#9da1c1]">
+                    <span>
+                      Kaynak yolu: <code className="break-all text-[#d9d6ff]">{src}</code>
+                    </span>
+                    <span>{Math.round(videoRef.current?.duration || 0)} sn</span>
+                  </div>
+
+                  <div className="rounded-3xl border border-white/10 bg-[#141426]/80 p-5 shadow-inner shadow-black/30">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">Zaman Çizelgesi</h3>
+                        <p className="text-xs text-[#bfb8d6]">
+                          Cast çiplerini sürükleyerek slot oluşturun, süreleri timeline üzerinden ayarlayın.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[#bfb8d6]">
+                          {totalSlots} slot
+                        </span>
+                        {loadingTimeline && (
+                          <span className="text-[#9da1c1]">Zaman çizelgesi yükleniyor…</span>
+                        )}
+                        {saveState === "saving" && <span className="text-amber-300">Kaydediliyor…</span>}
+                        {saveState === "saved" && <span className="text-emerald-400">Kaydedildi ✓</span>}
+                        {saveState === "error" && <span className="text-red-400">Kaydetme hatası</span>}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <AdminTimelinePanel
+                        videoRef={videoRef}
+                        initialSlots={timelineSlots}
+                        onSave={handleSave}
+                        castPalette={castPalette}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </section>
 
               <aside className="space-y-6">
-                <div className="rounded-xl border border-white/10 bg-[#1b1b24] p-4">
-                  <h2 className="text-lg font-semibold mb-3">Video Metinleri</h2>
+                <div className="rounded-3xl border border-white/10 bg-[#19192d]/80 p-6 shadow-[0_15px_30px_rgba(8,8,18,0.45)]">
+                  <h2 className="text-lg font-semibold text-white">Video Metinleri</h2>
                   {metaLoading ? (
-                    <div className="text-sm text-[#bfb8d6]">Video bilgileri yükleniyor…</div>
+                    <div className="mt-3 text-sm text-[#bfb8d6]">Video bilgileri yükleniyor…</div>
                   ) : (
-                    <form className="space-y-4" onSubmit={handleMetaSubmit}>
+                    <form className="mt-4 space-y-4" onSubmit={handleMetaSubmit}>
                       <div className="space-y-2">
                         <label className="text-xs font-semibold uppercase tracking-wide text-[#9da1c1]">
                           Başlık
@@ -718,34 +860,134 @@ export default function Admin() {
                   )}
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-[#1b1b24] p-4 space-y-4">
-                  <div>
-                    <h2 className="text-lg font-semibold mb-2">Aktif Cast Listesi</h2>
-                    <ul className="space-y-2 text-sm text-[#bfb8d6] max-h-[320px] overflow-auto pr-1">
-                      {casts.length === 0 && !loadingTimeline && (
-                        <li className="text-xs text-[#bfb8d6]">Henüz atanmış cast bulunmuyor.</li>
-                      )}
-                      {casts.map((cast) => (
-                        <li key={cast.id} className="rounded-lg border border-white/10 px-3 py-2 bg-[#0f0f14]">
-                          <div className="font-medium text-[#eee]">{cast.name || "İsimsiz"}</div>
-                          <div className="text-xs text-[#bfb8d6]">{cast.role || "Rol belirtilmemiş"}</div>
-                          <div className="text-[11px] text-[#9da1c1] mt-1">{cast.slots?.length ?? 0} slot</div>
-                        </li>
-                      ))}
-                    </ul>
+                <div className="rounded-3xl border border-white/10 bg-[#19192d]/80 p-6 shadow-[0_15px_30px_rgba(8,8,18,0.45)] space-y-5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Cast Kütüphanesi</h2>
+                      <p className="text-xs text-[#bfb8d6]">
+                        Mevcut seslendirenleri düzenleyin, yeni cast ekleyin ve fotoğraf URL'si tanımlayın.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/20 px-4 py-2 text-xs font-medium text-[#eee] hover:border-white/40"
+                      onClick={handleCastStartNew}
+                    >
+                      Yeni Cast
+                    </button>
                   </div>
-                  <div className="text-xs text-[#bfb8d6] border-t border-white/10 pt-3">
-                    <p className="mb-1 font-semibold text-[#eee]">İpuçları</p>
-                    <ul className="list-disc ml-4 space-y-1">
-                      <li>
-                        Paletten cast veya tür sürükleyip timeline üzerinde yeni slotlar oluşturabilirsiniz.
-                      </li>
-                      <li>
-                        Seçili slotu sağ panelden manuel olarak düzenleyebilir, süreleri klavyeyle ince
-                        ayarlayabilirsiniz.
-                      </li>
-                      <li>Kaydet butonuna bastığınızda veriler tarayıcıda yerel olarak saklanır.</li>
-                    </ul>
+
+                  <form className="grid gap-3" onSubmit={handleCastSubmit}>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-[#9da1c1]">
+                        İsim
+                      </label>
+                      <input
+                        type="text"
+                        value={castForm.name}
+                        onChange={(e) => handleCastFieldChange("name", e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-[#0f0f14] px-3 py-2 text-sm focus:border-[#5b4bff] focus:outline-none"
+                        placeholder="Oyuncu adı"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-[#9da1c1]">
+                        Rol
+                      </label>
+                      <input
+                        type="text"
+                        value={castForm.role}
+                        onChange={(e) => handleCastFieldChange("role", e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-[#0f0f14] px-3 py-2 text-sm focus:border-[#5b4bff] focus:outline-none"
+                        placeholder="Karakter veya görev"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-[#9da1c1]">
+                        Fotoğraf URL
+                      </label>
+                      <input
+                        type="text"
+                        value={castForm.photo}
+                        onChange={(e) => handleCastFieldChange("photo", e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-[#0f0f14] px-3 py-2 text-sm focus:border-[#5b4bff] focus:outline-none"
+                        placeholder="https://"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="submit"
+                        className="rounded-lg bg-[#5b4bff] px-4 py-2 text-sm font-medium text-white hover:bg-[#7263ff]"
+                      >
+                        {castForm.id ? "Güncelle" : "Cast Ekle"}
+                      </button>
+                      {castStatusText && (
+                        <span
+                          className={`text-xs ${castStatus === "error" ? "text-red-400" : "text-[#bfb8d6]"}`}
+                        >
+                          {castStatusText}
+                        </span>
+                      )}
+                    </div>
+                  </form>
+
+                  <div className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-[#7a75a5]">
+                      Cast Kartları
+                    </div>
+                    <div className="grid gap-3">
+                      {loadingTimeline ? (
+                        <div className="text-sm text-[#bfb8d6]">Cast bilgileri yükleniyor…</div>
+                      ) : casts.length === 0 ? (
+                        <div className="text-sm text-[#bfb8d6]">
+                          Henüz bu videoya atanmış cast bulunmuyor. Yeni bir cast ekleyebilirsiniz.
+                        </div>
+                      ) : (
+                        casts.map((cast) => {
+                          const displayName = buildDisplayName(cast) || "İsimsiz";
+                          const initials = (cast.name || cast.role || "C").slice(0, 2).toUpperCase();
+                          const slotCount = cast.slots?.length ?? 0;
+                          return (
+                            <div
+                              key={cast.id}
+                              className={`flex gap-3 rounded-2xl border border-white/10 bg-[#0f0f18]/80 p-3 transition ${
+                                castEditorId === cast.id ? "ring-1 ring-[#5b4bff]" : "hover:border-white/30"
+                              }`}
+                            >
+                              <div className="h-14 w-14 overflow-hidden rounded-xl border border-white/10 bg-[#151527]">
+                                {cast.photo ? (
+                                  <img
+                                    src={cast.photo}
+                                    alt={displayName}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-xs text-[#7a75a5]">
+                                    {initials}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="text-sm font-medium text-white truncate">{displayName}</div>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-[#9da1c1] hover:text-[#c6cbff]"
+                                    onClick={() => handleCastSelect(cast.id)}
+                                  >
+                                    Düzenle
+                                  </button>
+                                </div>
+                                <div className="text-xs text-[#bfb8d6] truncate">
+                                  {cast.role || "Rol belirtilmemiş"}
+                                </div>
+                                <div className="text-[11px] text-[#7a75a5]">{slotCount} slot</div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 </div>
               </aside>

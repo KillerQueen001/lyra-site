@@ -72,6 +72,7 @@ export default function AdminTimelinePanel({
   onSave,
   castPalette = DEFAULT_CAST_PALETTE,
   kindPalette = KIND_NAMES,
+  className = "",
 }) {
   const paletteCast = useMemo(() => {
     const list = Array.isArray(castPalette) ? castPalette : DEFAULT_CAST_PALETTE;
@@ -95,7 +96,7 @@ export default function AdminTimelinePanel({
   const [dragMode, setDragMode] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   const [dragStartSnapshot, setDragStartSnapshot] = useState(null);
-  const timelineRef = useRef(null)
+  const timelineRef = useRef(null);
   const [width, setWidth] = useState(640);
 
   // DnD palet → timeline geçici önizleme
@@ -104,7 +105,7 @@ export default function AdminTimelinePanel({
     startX: 0,
     currentX: 0,
     meta: null,
-    });
+  });
 
   const duration = videoRef.current?.duration ?? 0;
   const currentTime = videoRef.current?.currentTime ?? 0;
@@ -300,8 +301,7 @@ export default function AdminTimelinePanel({
       return [...prev, newSlot].sort((a, b) => a.start - b.start);
     });
 
-    setDragCreate({ active: false, startX: 0, currentX: 0, meta: null })
-  }
+    setDragCreate({ active: false, startX: 0, currentX: 0, meta: null });
 
   function onTimelineDragLeave() {
     setDragCreate({ active: false, startX: 0, currentX: 0, meta: null });
@@ -585,64 +585,70 @@ export default function AdminTimelinePanel({
 
   // === UI ===
   return (
-    <div className="flex gap-3 w-[780px] min-w-[720px] max-w-[920px] text-[#eee]">
-      {/* Palette */}
-      <div className="w-48 shrink-0 rounded-lg border border-white/10 bg-[#1b1b24] p-3">
-        <div className="text-xs font-semibold mb-2 opacity-80">Palet</div>
-        <div className="text-[11px] text-white/70 mb-1">Cast</div>
-        <div className="flex flex-wrap gap-1 mb-3">
-          {paletteCast.map((c) => (
-            <button
-              key={c}
-              draggable
-              onDragStart={(e) => onPaletteDragStart(e, { cast: c })}
-              className="text-[11px] px-2 py-1 rounded-full bg-white/10 hover:bg-white/20"
-              title="Sürükleyip timeline'a bırak"
-            >
-              {c}
-            </button>
-          ))}
+    <div className={`space-y-4 text-[#eee] ${className}`}>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">Cast Paleti</div>
+          <div className="flex flex-wrap gap-2">
+            {paletteCast.map((c) => (
+              <button
+                key={c}
+                draggable
+                onDragStart={(e) => onPaletteDragStart(e, { cast: c })}
+                className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] hover:bg-white/20 transition"
+                title="Sürükleyip timeline'a bırak"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="text-[11px] text-white/70 mb-1">Tür</div>
-        <div className="grid grid-cols-2 gap-2">
-          {paletteKinds.map((k) => (
-            <button
-              key={k}
-              draggable
-              onDragStart={(e) => onPaletteDragStart(e, { kind: k })}
-              className="text-[11px] px-2 py-1 rounded border border-white/10 hover:border-white/30"
-              style={{ background: KIND_COLORS[k] + "22", color: "#fff" }}
-              title="Sürükleyip timeline'a bırak"
-            >
-              {k}
-            </button>
-          ))}
+        <div className="flex-1 min-w-0">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">Türler</div>
+          <div className="flex flex-wrap gap-2">
+            {paletteKinds.map((k) => (
+              <button
+                key={k}
+                draggable
+                onDragStart={(e) => onPaletteDragStart(e, { kind: k })}
+                className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] hover:border-white/40 transition"
+                style={{ background: `${KIND_COLORS[k]}22`, color: "#fff" }}
+                title="Sürükleyip timeline'a bırak"
+              >
+                {k}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-4 border-t border-white/10 pt-3">
-          <div className="text-[11px] text-white/70 mb-1">Hızlı</div>
+        <div className="flex w-full flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs xl:w-auto xl:min-w-[220px]">
+          <div className="font-semibold uppercase tracking-wide text-white/60">Kısayollar</div>
           <div className="flex flex-wrap gap-2">
             <button
-              className="px-3 py-1.5 rounded bg-[#7c4bd9] hover:opacity-90"
+              type="button"
+              className="rounded-full bg-[#7c4bd9] px-3 py-1.5 font-medium hover:opacity-90"
               onClick={() => addFromCurrent(2)}
             >
-              +2s
+              Şu an +2s
             </button>
             <button
-              className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
+              type="button"
+              className="rounded-full bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c] disabled:opacity-50"
               onClick={() => duplicateSelected()}
               disabled={!selectedId}
             >
               Kopyala
             </button>
             <button
-              className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
+              type="button"
+              className="rounded-full bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
               onClick={() => setImportOpen(true)}
             >
               İçe Aktar
             </button>
             <button
-              className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
+              type="button"
+              className="rounded-full bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
               onClick={handleExport}
             >
               Export
@@ -657,187 +663,183 @@ export default function AdminTimelinePanel({
         </div>
       </div>
 
-      {/* Timeline */}
-      <div className="flex-1">
-        <div
-          ref={timelineRef}
-          className="relative select-none h-32 rounded-lg border border-white/10 bg-[rgba(18,18,24,0.88)] overflow-hidden"
-          onMouseDown={onMouseDownBlank}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onDragOver={onTimelineDragOver}
-          onDrop={onTimelineDrop}
-          onDragLeave={onTimelineDragLeave}
-        >
-          <Grid duration={duration} width={width} />
+      <div
+        ref={timelineRef}
+        className="relative h-36 select-none overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(30,30,48,0.95),rgba(12,12,18,0.95))] shadow-inner shadow-black/40 sm:h-40"
+        onMouseDown={onMouseDownBlank}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onDragOver={onTimelineDragOver}
+        onDrop={onTimelineDrop}
+        onDragLeave={onTimelineDragLeave}
+      >
+        <Grid duration={duration} width={width} />
 
-          {/* DnD preview */}
-          {dragCreate.active && (
-            <div
-              className="absolute top-2 h-[80px] rounded-md border-2 border-dashed"
-              style={{
-                left: Math.min(dragCreate.startX, dragCreate.currentX),
-                width: Math.max(6, Math.abs(dragCreate.currentX - dragCreate.startX)),
-                borderColor:
-                  dragCreate.meta && dragCreate.meta.kind
-                    ? KIND_COLORS[dragCreate.meta.kind]
-                    : "#bfb8d6",
-              }}
-            />
-          )}
+        {dragCreate.active && (
+          <div
+            className="absolute top-2 h-[80px] rounded-md border-2 border-dashed"
+            style={{
+              left: Math.min(dragCreate.startX, dragCreate.currentX),
+              width: Math.max(6, Math.abs(dragCreate.currentX - dragCreate.startX)),
+              borderColor:
+                dragCreate.meta && dragCreate.meta.kind
+                  ? KIND_COLORS[dragCreate.meta.kind]
+                  : "#bfb8d6",
+            }}
+          />
+        )}
 
-          {slots.map((s) => (
-            <SlotView
-              key={s.id}
-              slot={s}
-              selected={s.id === selectedId}
-              toX={timeToX}
-              onMouseDown={onMouseDownSlot}
-            />
-          ))}
+        {slots.map((s) => (
+          <SlotView
+            key={s.id}
+            slot={s}
+            selected={s.id === selectedId}
+            toX={timeToX}
+            onMouseDown={onMouseDownSlot}
+          />
+        ))}
 
-          <Playhead x={timeToX(currentTime)} onSeek={(t) => seek(t)} xToTime={xToTime} />
-        </div>
+        <Playhead x={timeToX(currentTime)} onSeek={(t) => seek(t)} xToTime={xToTime} />
+      </div>
 
-        {/* Inspector */}
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-white/10 bg-[#1b1b24] p-3">
-            <div className="text-xs font-semibold mb-2 opacity-80">Seçili Slot</div>
-            {selected ? (
-              <div className="space-y-2 text-sm">
-                <FieldNumber
-                  label="Başlangıç"
-                  value={selected.start}
-                  onChange={(v) => {
-                    const vv = snap(v);
-                    const end = Math.max(selected.end, vv + MIN_LEN);
-                    updateSelected({
-                      start: clamp(vv, 0, duration - MIN_LEN),
-                      end: clamp(end, vv + MIN_LEN, duration),
-                    });
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-[#1b1b24]/80 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-white/60 mb-2">Seçili Slot</div>
+          {selected ? (
+            <div className="space-y-2 text-sm">
+              <FieldNumber
+                label="Başlangıç"
+                value={selected.start}
+                onChange={(v) => {
+                  const vv = snap(v);
+                  const end = Math.max(selected.end, vv + MIN_LEN);
+                  updateSelected({
+                    start: clamp(vv, 0, duration - MIN_LEN),
+                    end: clamp(end, vv + MIN_LEN, duration),
+                  });
+                }}
+              />
+              <FieldNumber
+                label="Bitiş"
+                value={selected.end}
+                onChange={(v) =>
+                  updateSelected({
+                    end: clamp(snap(v), selected.start + MIN_LEN, duration),
+                  })
+                }
+              />
+              <FieldText
+                label="Etiket"
+                value={selected.label ?? ""}
+                onChange={(v) => updateSelected({ label: v })}
+                placeholder="örn. Replik 3"
+              />
+              <div className="flex items-center gap-2">
+                <label className="w-16 opacity-70 text-xs">Cast</label>
+                <CastEditor
+                  value={selected.cast ?? []}
+                  onChange={(next) => updateSelected({ cast: next })}
+                  suggestions={paletteCast}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="w-16 opacity-70 text-xs">Tür</label>
+                <select
+                  className="rounded border border-white/10 bg-[#0f0f14] px-2 py-1 text-sm"
+                  value={selected.kind ?? "dialogue"}
+                  onChange={(e) => {
+                    const k = normalizeKind(e.target.value);
+                    updateSelected({ kind: k, color: KIND_COLORS[k] });
                   }}
-                />
-                <FieldNumber
-                  label="Bitiş"
-                  value={selected.end}
-                  onChange={(v) =>
-                    updateSelected({
-                      end: clamp(snap(v), selected.start + MIN_LEN, duration),
-                    })
-                  }
-                />
-                <FieldText
-                  label="Etiket"
-                  value={selected.label ?? ""}
-                  onChange={(v) => updateSelected({ label: v })}
-                  placeholder="örn. Replik 3"
-                />
-                <div className="flex items-center gap-2">
-                  <label className="w-16 opacity-70 text-xs">Cast</label>
-                  <CastEditor
-                    value={selected.cast ?? []}
-                    onChange={(next) => updateSelected({ cast: next })}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="w-16 opacity-70 text-xs">Tür</label>
-                  <select
-                    className="bg-[#0f0f14] rounded px-2 py-1 border border-white/10 text-sm"
-                    value={selected.kind ?? "dialogue"}
-                    onChange={(e) => {
-                      const k = normalizeKind(e.target.value);
-                      updateSelected({ kind: k, color: KIND_COLORS[k] });
-                    }}
-                  >
-                    {paletteKinds.map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="w-16 opacity-70 text-xs">Renk</label>
-                  <input
-                    type="color"
-                    className="h-8 w-12 bg-transparent"
-                    value={selected.color ?? "#7c4bd9"}
-                    onChange={(e) => updateSelected({ color: e.target.value })}
-                  />
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button
-                    className="px-3 py-1.5 rounded bg-red-500/90 hover:bg-red-500"
-                    onClick={removeSelected}
-                  >
-                    Sil
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
-                    onClick={() => seek(selected.start)}
-                  >
-                    Başa Git
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
-                    onClick={() => seek(selected.end)}
-                  >
-                    Sona Git
-                  </button>
-                </div>
+                >
+                  {paletteKinds.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <div className="text-xs text-[#bfb8d6]">
-                Paletten bir öğeyi timeline'a sürükleyin veya boş alana basılı tutup sürükleyerek slot çizin.
+              <div className="flex items-center gap-2">
+                <label className="w-16 opacity-70 text-xs">Renk</label>
+                <input
+                  type="color"
+                  className="h-8 w-12 bg-transparent"
+                  value={selected.color ?? "#7c4bd9"}
+                  onChange={(e) => updateSelected({ color: e.target.value })}
+                />
               </div>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-[#1b1b24] p-3">
-            <div className="text-xs font-semibold mb-2 opacity-80">İpuçları</div>
-            <ul className="text-xs text-[#bfb8d6] space-y-1 list-disc ml-4">
-              <li>
-                Paletten bir <b>cast</b> çipini sürükleyip timeline'a bırak: o cast ile yeni slot oluşur.
-              </li>
-              <li>
-                Paletten bir <b>tür</b> (dialogue/music/...) sürükleyip var olan slot üzerine bırak: türü
-                değiştirir.
-              </li>
-              <li>Boş alana basılı tutup sürükleyerek de slot çizebilirsin.</li>
-              <li>Slotu ortasından sürükle: taşı. Kenarlardan: uzat/kısalt.</li>
-              <li>Çift tık timeline: videoda o ana git. Klavye: ←/→, Shift ile 0.5s, Delete ile sil.</li>
-            </ul>
-          </div>
+              <div className="flex flex-wrap gap-2 pt-2 text-xs">
+                <button
+                  type="button"
+                  className="rounded bg-red-500/90 px-3 py-1.5 font-medium hover:bg-red-500"
+                  onClick={removeSelected}
+                >
+                  Sil
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
+                  onClick={() => seek(selected.start)}
+                >
+                  Başa Git
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
+                  onClick={() => seek(selected.end)}
+                >
+                  Sona Git
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-[#bfb8d6]">
+              Paletten bir öğeyi timeline'a sürükleyin veya boş alana basılı tutup sürükleyerek yeni bir slot çizin.
+            </div>
+          )}
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-[#1b1b24]/60 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-white/60 mb-2">İpuçları</div>
+          <ul className="space-y-2 text-xs text-[#bfb8d6]">
+            <li>Cast çiplerini sürükleyip bırakarak hızlıca yeni slotlar oluşturabilirsiniz.</li>
+            <li>
+              Tür çiplerini mevcut slotların üzerine bırakarak diyalog/müzik/sfx gibi etiketleri anında değiştirin.
+            </li>
+            <li>Boş alana basılı tutup sürükleyerek serbest uzunlukta yeni slot çizebilirsiniz.</li>
+            <li>Seçili slot için klavyeden ←/→ ile 0.1s, Shift ile 0.5s adım yapabilirsiniz.</li>
+            <li>JSON veya CSV içe aktarma ile dışarıdaki kayıtları zaman çizelgesine yükleyebilirsiniz.</li>
+          </ul>
         </div>
       </div>
 
-      {/* Import modal */}
       {importOpen && (
         <div
-          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onMouseDown={() => setImportOpen(false)}
         >
           <div
-            className="w-[680px] max-w-[92vw] bg-[#1b1b24] rounded-xl p-4 border border-white/10"
+            className="w-[680px] max-w-[92vw] rounded-xl border border-white/10 bg-[#1b1b24] p-4"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="text-sm font-semibold mb-2">Bulk Import (JSON/CSV)</div>
             <textarea
-              className="w-full h-60 bg-[#0f0f14] rounded p-2 border border-white/10 text-sm"
+              className="h-60 w-full rounded border border-white/10 bg-[#0f0f14] p-2 text-sm"
               placeholder='JSON array veya CSV: start,end,label,cast1|cast2,kind'
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
             />
-            {error && <div className="text-red-400 text-xs mt-1">{error}</div>}
-            <div className="mt-3 flex gap-2 justify-end">
+            {error && <div className="mt-1 text-xs text-red-400">{error}</div>}
+            <div className="mt-3 flex justify-end gap-2">
               <button
-                className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
+                type="button"
+                className="rounded bg-[#3a334a] px-3 py-1.5 text-sm hover:bg-[#4a405c]"
                 onClick={() => setImportOpen(false)}
               >
                 İptal
               </button>
               <button
-                className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
+                type="button"
+                className="rounded bg-emerald-600 px-3 py-1.5 text-sm hover:bg-emerald-500"
                 onClick={handleImport}
               >
                 İçe Aktar
