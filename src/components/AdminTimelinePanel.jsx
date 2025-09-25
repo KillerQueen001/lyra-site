@@ -35,6 +35,16 @@ const KIND_COLORS = {
 const SNAP = 0.05; // 50ms
 const MIN_LEN = 0.1; // 100ms
 
+const DEFAULT_CAST_PALETTE = [
+  "Hannah",
+  "Mert",
+  "Ayşe",
+  "John",
+  "SFX-Drone",
+  "Crowd",
+];
+
+
 function guid() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -1057,12 +1067,3 @@ function CastEditor({ value, onChange }) {
     </div>
   );
 }
-
-const DEFAULT_CAST_PALETTE = [
-  "Hannah",
-  "Mert",
-  "John",
-  "SFX-Drone",
-  "Crowd",
-];
-
