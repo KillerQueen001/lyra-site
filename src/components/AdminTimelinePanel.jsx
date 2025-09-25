@@ -70,7 +70,23 @@ export default function AdminTimelinePanel({
   videoRef,
   initialSlots = [],
   onSave,
+  castPalette = DEFAULT_CAST_PALETTE,
+  kindPalette = KIND_NAMES,
 }) {
+  const paletteCast = useMemo(() => {
+    const list = Array.isArray(castPalette) ? castPalette : DEFAULT_CAST_PALETTE;
+    const filtered = list.filter((item) => typeof item === "string" && item.trim());
+    if (!filtered.length) return DEFAULT_CAST_PALETTE;
+    return Array.from(new Set(filtered));
+  }, [castPalette]);
+
+  const paletteKinds = useMemo(() => {
+    const list = Array.isArray(kindPalette) ? kindPalette : KIND_NAMES;
+    const filtered = list.filter((item) => typeof item === "string" && item.trim());
+    if (!filtered.length) return KIND_NAMES;
+    return Array.from(new Set(filtered.filter((k) => KIND_NAMES.includes(k))));
+  }, [kindPalette]);
+
   const [slots, setSlots] = useState(() =>
     [...initialSlots].sort((a, b) => a.start - b.start)
   );
@@ -97,6 +113,11 @@ export default function AdminTimelinePanel({
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setSlots([...initialSlots].sort((a, b) => a.start - b.start));
+    setSelectedId(null);
+  }, [initialSlots]);
 
   // Resize observer for timeline width
   useEffect(() => {
@@ -187,7 +208,7 @@ export default function AdminTimelinePanel({
     const x = clamp(e.clientX - rect.left, 0, width);
 
     setDragCreate((prev) => {
-            const meta = prev.active && prev.meta ? prev.meta : parseMeta(dt);
+      const meta = prev.active && prev.meta ? prev.meta : parseMeta(dt);
       if (!meta) {
         return { active: false, startX: 0, currentX: 0, meta: null };
       }
@@ -198,7 +219,7 @@ export default function AdminTimelinePanel({
     });
   }
 
-   function parseMeta(dt) {
+  function parseMeta(dt) {
     try {
       const raw = dt.getData("application/x-slot");
       if (!raw) return null;
@@ -209,7 +230,7 @@ export default function AdminTimelinePanel({
           kind: typeof m.kind === "string" ? m.kind : undefined,
         };
       }
-      return null
+      return null;
     } catch {
       return null;
     }
@@ -570,7 +591,7 @@ export default function AdminTimelinePanel({
         <div className="text-xs font-semibold mb-2 opacity-80">Palet</div>
         <div className="text-[11px] text-white/70 mb-1">Cast</div>
         <div className="flex flex-wrap gap-1 mb-3">
-          {PALETTE_CAST.map((c) => (
+          {paletteCast.map((c) => (
             <button
               key={c}
               draggable
@@ -584,7 +605,7 @@ export default function AdminTimelinePanel({
         </div>
         <div className="text-[11px] text-white/70 mb-1">Tür</div>
         <div className="grid grid-cols-2 gap-2">
-          {PALETTE_KINDS.map((k) => (
+          {paletteKinds.map((k) => (
             <button
               key={k}
               draggable
@@ -728,7 +749,7 @@ export default function AdminTimelinePanel({
                       updateSelected({ kind: k, color: KIND_COLORS[k] });
                     }}
                   >
-                    {PALETTE_KINDS.map((k) => (
+                    {paletteKinds.map((k) => (
                       <option key={k} value={k}>
                         {k}
                       </option>
@@ -1004,6 +1025,12 @@ function CastEditor({ value, onChange }) {
   );
 }
 
-const PALETTE_CAST = ["Hannah", "Mert", "Ayşe", "John", "SFX-Drone", "Crowd"];
-const PALETTE_KINDS = [...KIND_NAMES];
+const DEFAULT_CAST_PALETTE = [
+  "Hannah",
+  "Mert",
+  "Ayşe",
+  "John",
+  "SFX-Drone",
+  "Crowd",
+];
 

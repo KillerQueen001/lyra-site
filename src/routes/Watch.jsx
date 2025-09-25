@@ -4,7 +4,7 @@ import XRayPanel from "../components/XRayPanel";
 import { applyOverrides } from "../utils/castLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
 import { findEpisodeByVideoId } from "../data/contents";
-import { getVideoEntry } from "../data/videoLibrary";
+import { getVideoEntry, videoLibrary } from "../data/videoLibrary";
 import { loadHls } from "../utils/loadHls";
 import {
   isHlsSource,
@@ -131,6 +131,45 @@ export default function Watch() {
           .join(", ")}${videoEntry.files.single ? " + ana MP4" : ""}.`
       : "Bu video tek bir MP4 kaynağı ile yapılandırılmış durumda."
     : `Varsayılan kalite adlandırması: /videos/${id}_480.mp4, _720, _1080.`;
+
+  const displayDescription =
+    videoEntry?.description ||
+    episodeInfo?.content?.description ||
+    "Lyra Records arşivinden bir video.";
+
+  const recommendedEpisodes = useMemo(() => {
+    if (episodeInfo?.content?.episodes?.length) {
+      const siblings = episodeInfo.content.episodes
+        .filter((ep) => ep.videoId !== id)
+        .map((ep) => {
+          const entry = getVideoEntry(ep.videoId);
+          return {
+            id: ep.videoId,
+            title: entry?.title || `${episodeInfo.content.title} — ${ep.title}`,
+            description:
+              entry?.description ||
+              episodeInfo.content.description ||
+              "Lyra Records arşivinden önerilen bölüm.",
+            badge: ep.title,
+            poster: entry?.poster || null,
+          };
+        });
+      if (siblings.length) {
+        return siblings;
+      }
+    }
+
+    return Object.entries(videoLibrary)
+      .filter(([videoId]) => videoId !== id)
+      .map(([videoId, entry]) => ({
+        id: videoId,
+        title: entry.title,
+        description:
+          entry.description || "Lyra Records arşivinden önerilen bölüm.",
+        badge: "Önerilen",
+        poster: entry.poster || null,
+      }));
+  }, [episodeInfo, id]);
 
   useEffect(() => {
     if (!allowQualityMenu) {
@@ -422,227 +461,298 @@ export default function Watch() {
 
   return (
     <div className="watch-page">
-      <p>
-        <Link to="/" className="watch-back-link">
-          ← Listeye dön
-        </Link>
-      </p>
+      <div className="watch-breadcrumb">
+        <Link to="/videos">Videolar</Link>
+        {episodeInfo?.content && (
+          <>
+            <span>/</span>
+            <Link to={`/content/${episodeInfo.contentId}`}>
+              {episodeInfo.content.title}
+            </Link>
+          </>
+        )}
+        <span>/</span>
+        <span>{episodeInfo?.episode?.title || headerTitle}</span>
+      </div>
 
-      <div className="watch-header">
-        <div>
+      <header className="watch-header">
+        <div className="watch-header-info">
           <h1 className="watch-title">{headerTitle}</h1>
           {headerSubtitle && (
             <p className="watch-subtitle">{headerSubtitle}</p>
           )}
-          <p className="watch-subtitle">
-            Video ID: <b className="watch-accent">{id}</b>
-          </p>
-          <p className="watch-subtitle">
-            Kaynak: <b className="watch-accent">{sourceLabel}</b>
-          </p>         
+          <div className="watch-meta">
+            {episodeInfo?.episode?.title && <span>{episodeInfo.episode.title}</span>}
+            <span>
+              Video ID: <b className="watch-accent">{id}</b>
+            </span>
+            <span>
+              Kaynak: <b className="watch-accent">{sourceLabel}</b>
+            </span>
+          </div>
         </div>
 
-        {/* Kast yerleştir (yeni sekme) */}
-        <button
-          type="button"
-          onClick={() => window.open(`/cast/select/${id}`, "_blank", "noopener")}
-          className="watch-open-cast-button"
-        >
-          Kast yerleştir
-        </button>
-      </div>
-
-      {/* Player kabuğu */}
-      <div className="watch-layout">
-        <div
-          onMouseMove={showControlsTemporarily}
-          onMouseLeave={() => {
-            if (playing && !(speedOpen || qualityOpen || xrayOpen)) setControlsVisible(false);
-          }}
-          onTouchStart={() => {
-            setControlsVisible(true);
-            scheduleAutoHide();
-          }}
-          className={`watch-player-shell${hideCursor ? " no-cursor" : ""}`}
-        >
-          <video
-            ref={videoRef}
-            controls={false}
-            preload="metadata"
-            className="watch-video"
+        <div className="watch-actions">
+          <button
+            type="button"
+            className="watch-primary-btn"
             onClick={togglePlay}
-            poster={videoEntry?.poster}
-          />
+          >
+            İzlemeye Başla
+          </button>
+          <button
+            type="button"
+            onClick={() => window.open(`/cast/select/${id}`, "_blank", "noopener")}
+            className="watch-secondary-btn"
+          >
+            Kast yerleştir
+          </button>
+        </div>
+      </header>
 
-          {/* === Castlar Paneli (X-Ray) === */}
-          <XRayPanel open={xrayOpen} onClose={() => setXrayOpen(false)} items={xrayItems} />
-
-          {/* küçük toast */}
-          {toast && (
-            <div className="watch-toast">{toast}</div>
-          )}
-
-          {/* Kontrol barı */}
-          <div className={`watch-controls${controlsVisible ? " is-visible" : ""}`}>
-            {/* süre çubuğu */}
-            <div className="watch-timeline">
-              <div className="watch-time">{formatTime(current)}</div>
-
-              <input
-                className="watch-range"
-                type="range"
-                min={0}
-                max={Math.max(duration, 0.1)}
-                step={0.1}
-                value={current}
-                onChange={(e) => onSeek(e.currentTarget.value)}
-                style={{ "--watch-progress": `${progress}%` }}
+      <div className="watch-layout">
+        <main className="watch-main">
+          <div className="watch-player-area">
+            <div
+              onMouseMove={showControlsTemporarily}
+              onMouseLeave={() => {
+                if (playing && !(speedOpen || qualityOpen || xrayOpen)) {
+                  setControlsVisible(false);
+                }
+              }}
+              onTouchStart={() => {
+                setControlsVisible(true);
+                scheduleAutoHide();
+              }}
+              className={`watch-player-shell${hideCursor ? " no-cursor" : ""}`}
+            >
+              <video
+                ref={videoRef}
+                controls={false}
+                preload="metadata"
+                className="watch-video"
+                onClick={togglePlay}
+                poster={videoEntry?.poster}
               />
-              <div className="watch-time watch-time-right">{formatTime(duration)}</div>
-            </div>
 
-            {/* butonlar */}
-            <div className="watch-control-row">
-              {/* sol */}
-              <div className="watch-control-group">
-                <button
-                  type="button"
-                  onClick={togglePlay}
-                  aria-label={playing ? "Duraklat" : "Oynat"}
-                  className="watch-control-button"
-                >
-                  <Icon src={playing ? "/icons/pause.png" : "/icons/play.png"} />
-                </button>
+              <XRayPanel
+                open={xrayOpen}
+                onClose={() => setXrayOpen(false)}
+                items={xrayItems}
+              />
 
-                <button
-                  type="button"
-                  onClick={toggleMute}
-                  aria-label={muted ? "Sesi aç" : "Sesi kapat"}
-                  className="watch-control-button"
-                >
-                  <Icon src={muted ? "/icons/mute.png" : "/icons/volume.png"} />
-                </button>
-                <input
-                  className="watch-range watch-volume-range"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={muted ? 0 : volume}
-                  onChange={(e) => changeVol(e.currentTarget.value)}
+              {toast && <div className="watch-toast">{toast}</div>}
 
-                />
-              </div>
+              <div className={`watch-controls${controlsVisible ? " is-visible" : ""}`}>
+                <div className="watch-timeline">
+                  <div className="watch-time">{formatTime(current)}</div>
 
-              <div className="watch-flex-spacer" />
+                  <input
+                    className="watch-range"
+                    type="range"
+                    min={0}
+                    max={Math.max(duration, 0.1)}
+                    step={0.1}
+                    value={current}
+                    onChange={(e) => onSeek(e.currentTarget.value)}
+                    style={{ "--watch-progress": `${progress}%` }}
+                  />
+                  <div className="watch-time watch-time-right">{formatTime(duration)}</div>
+                </div>
 
-              {/* sağ */}
-              <div className="watch-control-group">
-                {/* Castlar */}
-                <button
-                  type="button"
-                  onClick={() => setXrayOpen((o) => !o)}
-                  aria-label="Castlar"
-                  className="watch-control-button"
-                >
-                  <Icon src="/icons/cast.png" />
-                </button>
+                <div className="watch-control-row">
+                  <div className="watch-control-group">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      aria-label={playing ? "Duraklat" : "Oynat"}
+                      className="watch-control-button"
+                    >
+                      <Icon src={playing ? "/icons/pause.png" : "/icons/play.png"} />
+                    </button>
 
-                {/* hız */}
-                <div className="menu-speed">
-                  <button
-                    type="button"
-                    onClick={() => { 
-                      const next = !speedOpen;
-                      setSpeedOpen(next);
-                      clearHideTimer();
-                      if (!next) scheduleAutoHide();
-                    }}
-                    aria-label="Hız"
-                    className="watch-control-button"
-                  >
-                    <img
-                      src="/icons/speed.png"
-                      alt=""
-                      className={`watch-speed-icon${speedOpen ? " is-open" : ""}`}
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      aria-label={muted ? "Sesi aç" : "Sesi kapat"}
+                      className="watch-control-button"
+                    >
+                      <Icon src={muted ? "/icons/mute.png" : "/icons/volume.png"} />
+                    </button>
+                    <input
+                      className="watch-range watch-volume-range"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={muted ? 0 : volume}
+                      onChange={(e) => changeVol(e.currentTarget.value)}
+
                     />
-                  </button>
-                  <div className={`watch-dropdown${speedOpen ? " is-open" : ""}`}>
-                    <MenuCard title="Oynatma Hızı">
-                      {[0.5, 1, 1.25, 1.5, 2].map((s) => (
-                        <MenuItem
-                          key={s}
-                          active={s === speed}
-                          label={`${s}×`}
-                          onClick={() => {
-                            setSpeed(s);
-                            setSpeedOpen(false);
-                            scheduleAutoHide();
-                          }}
+                  </div>
+
+                  <div className="watch-flex-spacer" />
+
+                  <div className="watch-control-group">
+                    <button
+                      type="button"
+                      onClick={() => setXrayOpen((o) => !o)}
+                      aria-label="Castlar"
+                      className="watch-control-button"
+                    >
+                      <Icon src="/icons/cast.png" />
+                    </button>
+
+                    <div className="menu-speed">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !speedOpen;
+                          setSpeedOpen(next);
+                          clearHideTimer();
+                          if (!next) scheduleAutoHide();
+                        }}
+                        aria-label="Hız"
+                        className="watch-control-button"
+                      >
+                        <img
+                          src="/icons/speed.png"
+                          alt=""
+                          className={`watch-speed-icon${speedOpen ? " is-open" : ""}`}
                         />
-                      ))}
-                    </MenuCard>
+                      </button>
+                      <div className={`watch-dropdown${speedOpen ? " is-open" : ""}`}>
+                        <MenuCard title="Oynatma Hızı">
+                          {[0.5, 1, 1.25, 1.5, 2].map((s) => (
+                            <MenuItem
+                              key={s}
+                              active={s === speed}
+                              label={`${s}×`}
+                              onClick={() => {
+                                setSpeed(s);
+                                setSpeedOpen(false);
+                                scheduleAutoHide();
+                              }}
+                            />
+                          ))}
+                        </MenuCard>
+                      </div>
+                    </div>
+
+                    <div className="menu-quality">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!allowQualityMenu) {
+                            showToast("HLS akışında kalite otomatik seçilir.", 2200);
+                            return;
+                          }
+                          const next = !qualityOpen;
+                          setQualityOpen(next);
+                          clearHideTimer();
+                          if (!next) scheduleAutoHide();
+                        }}
+                        aria-label="Kalite"
+                        className="watch-control-button"
+                      >
+                        <Icon src="/icons/quality.png" />
+                      </button>
+                      {allowQualityMenu && (
+                        <div className={`watch-dropdown${qualityOpen ? " is-open" : ""}`}>
+                          <MenuCard title="Kalite">
+                            {qualityOptions.map((q) => (
+                              <MenuItem
+                                key={q}
+                                active={q === quality}
+                                label={`${q}p`}
+                                onClick={() => {
+                                  setQualityAndStay(q);
+                                }}
+                              />
+                            ))}
+                          </MenuCard>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="watch-control-button"
+                      onClick={enterFs}
+                      aria-label="Tam ekran"
+                    >
+                      <Icon src="/icons/fullscreen.png" />
+                    </button>
                   </div>
                 </div>
-
-                {/* kalite */}
-                <div className="menu-quality">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!allowQualityMenu) {
-                        showToast("HLS akışında kalite otomatik seçilir.", 2200);
-                        return;
-                      }                      
-                      const next = !qualityOpen;
-                      setQualityOpen(next);
-                      clearHideTimer();
-                      if (!next) scheduleAutoHide();
-                    }}
-                    aria-label="Kalite"
-                    className="watch-control-button"
-                  >
-                    <Icon src="/icons/quality.png" />
-                  </button>
-                  {allowQualityMenu && (
-                    <div className={`watch-dropdown${qualityOpen ? " is-open" : ""}`}>
-                      <MenuCard title="Kalite">
-                        {qualityOptions.map((q) => (
-                          <MenuItem
-                            key={q}
-                            active={q === quality}
-                            label={`${q}p`}
-                            onClick={() => {
-                              setQualityAndStay(q);
-                            }}
-                          />
-                        ))}
-                      </MenuCard>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  className="watch-control-button"
-                  onClick={enterFs}
-                  aria-label="Tam ekran"
-                >
-                  <Icon src="/icons/fullscreen.png" />
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <p className="watch-info-text">{qualityHint}</p>
-      {src && (
-        <p className="watch-info-text">
-          Aktif kaynak: <code>{src}</code>
-        </p>
-      )}
+          <p className="watch-description">{displayDescription}</p>
+
+          <section className="watch-rating" aria-label="Video beğeni ve puanlama">
+            <h3>Bu bölümü puanla</h3>
+            <div className="rating-stars">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  className="rating-star"
+                  aria-label={`${star} yıldız ver`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="watch-comment" aria-label="Video yorumları">
+            <h3>Yorumunu bırak</h3>
+            <textarea placeholder="Bu bölüm hakkında düşüncelerini paylaş..." />
+            <button type="button">Yorumu Gönder</button>
+          </section>
+
+          <section className="watch-info-card" aria-label="Teknik bilgiler">
+            <h3>Oynatıcı bilgileri</h3>
+            <p className="watch-info-text">{qualityHint}</p>
+            {src && (
+              <p className="watch-info-text">
+                Aktif kaynak: <code>{src}</code>
+              </p>
+            )}
+          </section>
+        </main>
+
+        <aside className="watch-sidebar">
+          <h3>Önerilen Videolar</h3>
+          <div className="watch-recommended-list">
+            {recommendedEpisodes.slice(0, 4).map((item) => (
+              <Link
+                key={item.id}
+                to={`/watch/${item.id}`}
+                className="watch-recommended-card"
+              >
+                <div className="watch-recommended-thumb">
+                  {item.poster ? (
+                    <img src={item.poster} alt="" loading="lazy" />
+                  ) : (
+                    <span className="watch-recommended-fallback">Lyra</span>
+                  )}
+                  <span>{item.badge}</span>
+                </div>
+                <div className="watch-recommended-info">
+                  <h4>{item.title}</h4>
+                  <p>{item.description}</p>
+                  <div className="watch-recommended-meta">
+                    <span>Video ID: {item.id}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
-

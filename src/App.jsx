@@ -37,6 +37,7 @@ function Navbar() {
         <li><a href="/apply">Başvuru</a></li>
         <li><a href="/contact">İletişim</a></li>
         <li><a href="/profile">Profil</a></li>
+        <li><a href="/admin">Admin</a></li>
       </ul>
     </nav>
   );
