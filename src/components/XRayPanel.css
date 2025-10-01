@@ -130,6 +130,17 @@
   border-radius: 8px;
 }
 
+.xray-item-photo--fallback {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(124, 75, 217, 0.6), rgba(35, 199, 163, 0.55));
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .xray-item-name {
   color: #eee;
   font-weight: 700;

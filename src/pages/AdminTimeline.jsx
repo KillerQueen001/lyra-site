@@ -1,53 +1,106 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AdminTimelinePanel from "../components/AdminTimelinePanel";
+import StudioVideoPlayer from "../components/StudioVideoPlayer";
+import { videoLibrary } from "../data/videoLibrary";
+import { xrayDemo } from "../data/xrayDemo";
+import { loadVideoTimeline, saveVideoTimeline } from "../utils/timelineLocal";
 import "./AdminTimeline.css";
 
-const CAST_LIBRARY = [
-  { id: "ayse", name: "Ayşe G.", description: "Sıcak ve samimi bir anlatım." },
-  { id: "mert", name: "Mert K.", description: "Enerjik ve tempolu sahneler için ideal." },
-  { id: "hannah", name: "Hannah L.", description: "Genç karakterler için yumuşak ton." },
-  { id: "ali", name: "Ali R.", description: "Fragmanlara güç katan bas ton." },
-  { id: "melis", name: "Melis T.", description: "Duygusal sahnelerde öne çıkan ses." },
+const SAMPLE_CAST = [
+  {
+    id: "ayse",
+    name: "Ayşe G.",
+    description: "Sıcak ve samimi anlatım tonuyla girişleri taşır.",
+    role: "Anlatıcı",
+    photo: null,
+  },
+  {
+    id: "mert",
+    name: "Mert K.",
+    description: "Enerjik sahnelere tempo katan erkek sesi.",
+    role: "Enerjik erkek",
+    photo: null,
+  },
+  {
+    id: "hannah",
+    name: "Hannah L.",
+    description: "Genç karakterler için yumuşak ton.",
+    role: "Genç kadın",
+    photo: null,
+  },
+  {
+    id: "ali",
+    name: "Ali R.",
+    description: "Fragmanlarda derin bas tonuyla öne çıkar.",
+    role: "Tanıtım sesi",
+    photo: null,
+  },
 ];
 
-const INITIAL_TIMELINE = [
-  {
-    id: "intro",
-    start: 0,
-    end: 3.5,
-    label: "Açılış",
-    cast: [CAST_LIBRARY[0].name],
-    kind: "dialogue",
-  },
-  {
-    id: "teaser",
-    start: 3.5,
-    end: 7,
-    label: "Tanıtım",
-    cast: [CAST_LIBRARY[1].name],
-    kind: "dialogue",
-  },
-];
+const XRAY_CAST = xrayDemo.map((actor) => ({
+  id: actor.id,
+  name: actor.name,
+  description: actor.role,
+  role: actor.role,
+  photo: actor.photo,
+}));
+
+const DEFAULT_CAST_LIBRARY = Array.from(
+  new Map([...SAMPLE_CAST, ...XRAY_CAST].map((item) => [item.id, item])).values()
+);
+
+const INITIAL_TIMELINE = [];
+
+const VIDEO_OPTIONS = Object.entries(videoLibrary).map(([id, entry]) => ({
+  id,
+  title: entry.title || id,
+}));
 
 export default function AdminTimeline() {
   const videoRef = useRef(null);
+  const defaultVideoId = VIDEO_OPTIONS[0]?.id || "sample";
+  const [selectedVideoId, setSelectedVideoId] = useState(defaultVideoId);
   const [slots, setSlots] = useState(INITIAL_TIMELINE);
-  const [selectedCastId, setSelectedCastId] = useState(CAST_LIBRARY[0].id);
+  const [castLibrary, setCastLibrary] = useState(DEFAULT_CAST_LIBRARY);
+  const [selectedCastId, setSelectedCastId] = useState(
+    DEFAULT_CAST_LIBRARY[0]?.id || null
+  );
   const [lastSavedAt, setLastSavedAt] = useState(null);
 
+  useEffect(() => {
+    const stored = loadVideoTimeline(selectedVideoId);
+    const nextSlots = stored?.slots?.length ? stored.slots : INITIAL_TIMELINE;
+    const nextCastLibrary = stored?.castLibrary?.length
+      ? stored.castLibrary
+      : DEFAULT_CAST_LIBRARY;
+    setSlots(nextSlots);
+    setCastLibrary(nextCastLibrary);
+    setLastSavedAt(stored?.updatedAt ? new Date(stored.updatedAt) : null);
+    setSelectedCastId((prev) => {
+      if (prev && nextCastLibrary.some((cast) => cast.id === prev)) {
+        return prev;
+      }
+      return nextCastLibrary[0]?.id || null;
+    });
+  }, [selectedVideoId]);
+
   const castPalette = useMemo(
-    () => CAST_LIBRARY.map((voice) => voice.name),
-    []
+    () => castLibrary.map((voice) => voice.name),
+    [castLibrary]
   );
 
-  const activeCast = useMemo(
-    () => CAST_LIBRARY.find((voice) => voice.id === selectedCastId) ?? CAST_LIBRARY[0],
-    [selectedCastId]
-  );
+  const activeCast = useMemo(() => {
+    if (!selectedCastId) return castLibrary[0] || null;
+    return castLibrary.find((voice) => voice.id === selectedCastId) || null;
+  }, [castLibrary, selectedCastId]);
 
   const handleTimelineSave = (nextSlots) => {
     setSlots(nextSlots);
-    setLastSavedAt(new Date());
+    const saved = saveVideoTimeline(selectedVideoId, {
+      slots: nextSlots,
+      castLibrary,
+    });
+    setLastSavedAt(saved?.updatedAt ? new Date(saved.updatedAt) : new Date());
   };
 
   const handleCastDragStart = (event, voice) => {
@@ -69,9 +122,24 @@ export default function AdminTimeline() {
           </p>
         </div>
         <div className="admin-timeline-meta">
+          <label className="admin-timeline-select">
+            <span>Video</span>
+            <select
+              value={selectedVideoId}
+              onChange={(event) => setSelectedVideoId(event.target.value)}
+            >
+              {VIDEO_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.title}
+                </option>
+              ))}
+            </select>
+          </label>
           <span>{slots.length} blok</span>
           {lastSavedAt && (
-            <span>Son kaydetme: {lastSavedAt.toLocaleTimeString("tr-TR")}</span>
+            <span>
+              Son kaydetme: {lastSavedAt.toLocaleTimeString("tr-TR")}
+            </span>
           )}
         </div>
       </header>
@@ -79,23 +147,22 @@ export default function AdminTimeline() {
       <div className="admin-timeline-body">
         <section className="admin-timeline-stage">
           <div className="admin-timeline-video">
-            <video ref={videoRef} controls preload="metadata">
-              <source src="/videos/sample.mp4" type="video/mp4" />
-              Tarayıcınız video etiketini desteklemiyor.
-            </video>
+            <StudioVideoPlayer videoId={selectedVideoId} videoRef={videoRef} />
           </div>
           <div className="admin-timeline-help">
             <h2>Nasıl çalışır?</h2>
             <p>
               Sağdaki listeden bir seslendiren seçin ve aşağıdaki timeline
-              üzerine sürükleyerek blok ekleyin. Blokları sürükleyip bırakabilir,
-              kenarlardan tutarak sürelerini ayarlayabilirsiniz.
+              üzerine sürükleyerek blok ekleyin. Shift + scroll ile görünümü
+              kaydırabilir, Ctrl ile yakınlaştırıp uzaklaştırabilir, Alt ile
+              dikey yüksekliği ayarlayabilirsiniz.
             </p>
           </div>
         </section>
 
         <section className="admin-timeline-panel">
           <AdminTimelinePanel
+            key={selectedVideoId}
             videoRef={videoRef}
             initialSlots={slots}
             castPalette={castPalette}
@@ -110,7 +177,7 @@ export default function AdminTimeline() {
             <p>Sürüklemek için kartları tutup timeline&apos;a bırakın.</p>
           </div>
           <ul className="admin-timeline-cast-list">
-            {CAST_LIBRARY.map((voice) => (
+            {castLibrary.map((voice) => (
               <li key={voice.id}>
                 <button
                   type="button"
@@ -129,33 +196,39 @@ export default function AdminTimeline() {
                   </div>
                   <div className="timeline-voice-card__body">
                     <div className="timeline-voice-card__name">{voice.name}</div>
-                    <div className="timeline-voice-card__desc">{voice.description}</div>
+                    <div className="timeline-voice-card__desc">
+                      {voice.description || voice.role}
+                    </div>
                   </div>
                 </button>
               </li>
             ))}
           </ul>
 
-          <div className="admin-timeline-sidebar__active">
-            <h3>Seçili cast</h3>
-            <div className="timeline-voice-detail">
-              <div className="timeline-voice-detail__initials" aria-hidden>
-                {activeCast.name
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")}
+          {activeCast && (
+            <div className="admin-timeline-sidebar__active">
+              <h3>Seçili cast</h3>
+              <div className="timeline-voice-detail">
+                <div className="timeline-voice-detail__initials" aria-hidden>
+                  {activeCast.name
+                    .split(" ")
+                    .map((part) => part[0])
+                    .join("")}
+                </div>
+                <div>
+                  <div className="timeline-voice-detail__name">
+                    {activeCast.name}
+                  </div>
+                  <p className="timeline-voice-detail__description">
+                    {activeCast.description || activeCast.role}
+                  </p>
+                </div>
               </div>
-              <div>
-                <div className="timeline-voice-detail__name">{activeCast.name}</div>
-                <p className="timeline-voice-detail__description">
-                  {activeCast.description}
-                </p>
-              </div>
+              <p className="timeline-voice-detail__hint">
+                Eklediğiniz bloklara çift tıklayarak videoda o ana gidebilirsiniz.
+              </p>
             </div>
-            <p className="timeline-voice-detail__hint">
-              Eklediğiniz bloklara çift tıklayarak videoda o ana gidebilirsiniz.
-            </p>
-          </div>
+          )}
         </aside>
       </div>
     </div>

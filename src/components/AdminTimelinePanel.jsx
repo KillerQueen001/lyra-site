@@ -35,6 +35,15 @@ const KIND_COLORS = {
 
 const SNAP = 0.05; // 50ms
 const MIN_LEN = 0.1; // 100ms
+const MIN_VIEW_WINDOW = 0.5;
+const MIN_VERTICAL_SCALE = 0.6;
+const MAX_VERTICAL_SCALE = 2.5;
+const BASE_TRACK_HEIGHT = 170;
+const BASE_SLOT_HEIGHT = 96;
+const BASE_SLOT_TOP = 26;
+const BASE_GRID_TOP = 18;
+const BASE_GRID_BOTTOM = 32;
+const BASE_GRID_FOOTER = 36;
 
 const DEFAULT_CAST_PALETTE = [
   "Hannah",
@@ -102,6 +111,9 @@ export default function AdminTimelinePanel({
   const [dragStartSnapshot, setDragStartSnapshot] = useState(null);
   const timelineRef = useRef(null);
   const [width, setWidth] = useState(640);
+  const [viewStart, setViewStart] = useState(0);
+  const [viewDuration, setViewDuration] = useState(null);
+  const [verticalScale, setVerticalScale] = useState(1);
 
   // DnD palet → timeline geçici önizleme
   const [dragCreate, setDragCreate] = useState({
@@ -128,6 +140,19 @@ export default function AdminTimelinePanel({
     setSlots([...initialSlots].sort((a, b) => a.start - b.start));
     setSelectedId(null);
   }, [initialSlots]);
+
+  useEffect(() => {
+    if (!duration || duration <= 0) return;
+    setViewDuration((prev) => {
+      const baseDuration = duration;
+      const minWindow = Math.min(baseDuration, MIN_VIEW_WINDOW);
+      const safeMin = minWindow > 0 ? minWindow : baseDuration;
+      const current = prev && prev > 0 ? prev : baseDuration;
+      const next = clamp(current, safeMin, baseDuration);
+      setViewStart((prevStart) => clamp(prevStart, 0, Math.max(0, baseDuration - next)));
+      return next;
+    });
+  }, [duration]);
 
   // Resize observer for timeline width
   useEffect(() => {
@@ -186,18 +211,76 @@ export default function AdminTimelinePanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedId, slots, duration, videoRef]);
 
-  const pxPerSec = useMemo(() => (duration > 0 ? width / duration : 0), [width, duration]);
+  const effectiveViewDuration = useMemo(() => {
+    if (duration > 0) {
+      return viewDuration && viewDuration > 0 ? viewDuration : duration;
+    }
+    return viewDuration && viewDuration > 0 ? viewDuration : 1;
+  }, [duration, viewDuration]);
+
+  const pxPerSec = useMemo(
+    () => (effectiveViewDuration > 0 ? width / effectiveViewDuration : 0),
+    [width, effectiveViewDuration]
+  );
 
   function timeToX(t) {
-    return t * pxPerSec;
+    return (t - viewStart) * pxPerSec;
   }
   function xToTime(x) {
-    return x / Math.max(1, pxPerSec);
+    return x / Math.max(1, pxPerSec) + viewStart;
   }
 
   function seek(t) {
     if (!videoRef.current) return;
     videoRef.current.currentTime = clamp(t, 0, duration || 0);
+  }
+
+  function onTimelineWheel(e) {
+    if (width <= 0) return;
+    if (!(e.shiftKey || e.ctrlKey || e.altKey)) return;
+    if (!duration && (e.shiftKey || e.ctrlKey)) return;
+    e.preventDefault();
+
+    if (e.shiftKey) {
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const baseDuration = duration > 0 ? duration : effectiveViewDuration;
+      const offset = (delta / Math.max(1, width)) * effectiveViewDuration;
+      setViewStart((prev) => {
+        const next = clamp(prev + offset, 0, Math.max(0, baseDuration - effectiveViewDuration));
+        return Number.isFinite(next) ? next : prev;
+      });
+      return;
+    }
+
+    if (e.ctrlKey) {
+      const rect = timelineRef.current?.getBoundingClientRect();
+      const pointerRatio =
+        rect && width > 0 ? clamp((e.clientX - rect.left) / width, 0, 1) : 0.5;
+      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      setViewDuration((prevDuration) => {
+        const baseDuration = duration > 0 ? duration : prevDuration || effectiveViewDuration;
+        const current = prevDuration && prevDuration > 0 ? prevDuration : effectiveViewDuration;
+        const factor = Math.exp(delta * 0.0025);
+        const minCandidate = Math.min(baseDuration, MIN_VIEW_WINDOW);
+        const minWindow = minCandidate > 0 ? minCandidate : Math.min(current, baseDuration);
+        const maxWindow = baseDuration || current || 1;
+        const next = clamp(current * factor, minWindow, maxWindow);
+        setViewStart((prevStart) => {
+          const focusTime = (prevStart || 0) + current * pointerRatio;
+          const desiredStart = focusTime - next * pointerRatio;
+          const maxStartValue = Math.max(0, maxWindow - next);
+          return clamp(desiredStart, 0, maxStartValue);
+        });
+        return next;
+      });
+      return;
+    }
+
+    if (e.altKey) {
+      const factor = Math.exp(-e.deltaY * 0.0025);
+      setVerticalScale((prev) => clamp(prev * factor, MIN_VERTICAL_SCALE, MAX_VERTICAL_SCALE));
+      return;
+    }
   }
 
   // === Palette DnD ===
@@ -367,26 +450,8 @@ export default function AdminTimelinePanel({
   }
 
   function onMouseDownBlank(e) {
-    if (!duration) return;
-    const timelineEl = timelineRef.current;
-    if (!timelineEl) return;
-    const rect = timelineEl.getBoundingClientRect();
-    const startX = e.clientX - rect.left;
-    const t0 = snap(clamp(xToTime(startX), 0, duration));
-    const temp = {
-      id: "__temp__",
-      start: t0,
-      end: t0 + 0.2,
-      label: "",
-      cast: [],
-      color: pickColor(),
-      kind: "dialogue",
-    };
-    setSlots((prev) => [...prev, temp]);
-    setSelectedId(temp.id);
-    setIsDragging(true);
-    setDragMode("resize-r");
-    setDragStartSnapshot({ ...temp });
+    if (e.target !== e.currentTarget) return;
+    setSelectedId(null);
   }
 
   function onMouseMove(e) {
@@ -431,26 +496,7 @@ export default function AdminTimelinePanel({
     if (!isDragging) return;
     setIsDragging(false);
     setDragMode(null);
-
-    setSlots((prev) => {
-      const tempIdx = prev.findIndex((p) => p.id === "__temp__");
-      if (tempIdx !== -1) {
-        const s = prev[tempIdx];
-        const len = s.end - s.start;
-        if (len < MIN_LEN) {
-          const copy = [...prev];
-          copy.splice(tempIdx, 1);
-          setSelectedId(null);
-          return copy;
-        } else {
-          const copy = [...prev];
-          copy[tempIdx] = { ...s, id: guid() };
-          setSelectedId(copy[tempIdx].id);
-          return copy;
-        }
-      }
-      return prev;
-    });
+    setDragStartSnapshot(null);
   }
 
   function removeSelected() {
@@ -624,6 +670,16 @@ export default function AdminTimelinePanel({
       : "Etiket ekleyin"
     : "Slot seçilmedi";
   const panelClassName = ["timeline-panel", className].filter(Boolean).join(" ");
+  const playheadX = clamp(timeToX(currentTime), 0, width);
+  const trackStyle = {
+    height: `${BASE_TRACK_HEIGHT * verticalScale}px`,
+    "--timeline-track-height": `${BASE_TRACK_HEIGHT * verticalScale}px`,
+    "--timeline-slot-height": `${BASE_SLOT_HEIGHT * verticalScale}px`,
+    "--timeline-slot-top": `${BASE_SLOT_TOP * verticalScale}px`,
+    "--timeline-grid-top": `${BASE_GRID_TOP * verticalScale}px`,
+    "--timeline-grid-bottom": `${BASE_GRID_BOTTOM * verticalScale}px`,
+    "--timeline-grid-footer-height": `${BASE_GRID_FOOTER * verticalScale}px`,
+  };
 
   // === UI ===
   return (
@@ -674,11 +730,18 @@ export default function AdminTimelinePanel({
         onMouseDown={onMouseDownBlank}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
+        onWheel={onTimelineWheel}
         onDragOver={onTimelineDragOver}
         onDrop={onTimelineDrop}
         onDragLeave={onTimelineDragLeave}
+        style={trackStyle}
       >
-        <Grid duration={duration} width={width} />
+        <Grid
+          duration={duration}
+          width={width}
+          viewStart={viewStart}
+          viewDuration={effectiveViewDuration}
+        />
 
         {dragCreate.active && (
           <div
@@ -704,7 +767,7 @@ export default function AdminTimelinePanel({
           />
         ))}
 
-        <Playhead x={timeToX(currentTime)} onSeek={seek} xToTime={xToTime} />
+        <Playhead x={playheadX} onSeek={seek} xToTime={xToTime} />
       </div>
 
       <div className="timeline-secondary-row">
@@ -921,38 +984,59 @@ export default function AdminTimelinePanel({
   );
 }
 
-function Grid({ duration, width }) {
-  const majorEvery = 5; // seconds
-  const minorEvery = 1; // seconds
+function Grid({ duration, width, viewStart, viewDuration }) {
+  const pxPerSec = viewDuration > 0 ? width / viewDuration : 0;
+  const start = Math.max(0, viewStart);
+  const totalDuration = duration > 0 ? duration : viewDuration;
+  const end = Math.min(totalDuration, start + viewDuration);
+  const safeSpan = Math.max(viewDuration, 0.1);
 
-  const pxPerSec = duration > 0 ? width / duration : 0;
-  const majors = [];
-  const minors = [];
-  for (let t = 0; t <= duration; t += minorEvery) minors.push(t);
-  for (let t = 0; t <= duration; t += majorEvery) majors.push(t);
+  const baseSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300];
+  const targetSpacing = 80;
+  const majorStep =
+    baseSteps.find((step) => step * pxPerSec >= targetSpacing) || baseSteps[baseSteps.length - 1];
+  const minorStep = Math.max(majorStep / 5, SNAP);
+
+  const minorLines = [];
+  const majorLines = [];
+  const labels = [];
+
+  if (safeSpan > 0 && pxPerSec > 0) {
+    const firstMinor = Math.floor(start / minorStep) * minorStep;
+    for (let t = firstMinor, count = 0; t <= end + minorStep && count < 800; t += minorStep, count += 1) {
+      if (t < 0) continue;
+      minorLines.push(t);
+    }
+    const firstMajor = Math.floor(start / majorStep) * majorStep;
+    for (let t = firstMajor, count = 0; t <= end + majorStep && count < 400; t += majorStep, count += 1) {
+      if (t < 0) continue;
+      majorLines.push(t);
+      labels.push(t);
+    }
+  }
 
   return (
     <div className="timeline-grid">
-      {minors.map((t) => (
+      {minorLines.map((t) => (
         <div
           key={`m${t}`}
           className="timeline-grid-line timeline-grid-line--minor"
-          style={{ left: t * pxPerSec }}
+          style={{ left: (t - viewStart) * pxPerSec }}
         />
       ))}
-      {majors.map((t) => (
+      {majorLines.map((t) => (
         <div
           key={`M${t}`}
           className="timeline-grid-line timeline-grid-line--major"
-          style={{ left: t * pxPerSec }}
+          style={{ left: (t - viewStart) * pxPerSec }}
         />
       ))}
       <div className="timeline-grid-footer" />
-      {majors.map((t) => (
+      {labels.map((t) => (
         <div
           key={`L${t}`}
           className="timeline-grid-label"
-          style={{ left: t * pxPerSec + 6 }}
+          style={{ left: (t - viewStart) * pxPerSec + 6 }}
         >
           {secondsToTime(t)}
         </div>

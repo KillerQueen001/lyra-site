@@ -96,30 +96,46 @@ export default function XRayPanel({
                 </Motion.div>
               ) : (
                 <AnimatePresence initial={false} mode="popLayout">
-                  {items.map((p) => (
-                    <Motion.div
-                      key={p.id}
-                      layout
-                      initial={{ opacity: 0, y: 10, scale: 0.98, height: 0, marginBottom: 0 }}
-                      animate={{ opacity: 1, y: 0, scale: 1, height: "auto", marginBottom: 10 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.98, height: 0, marginBottom: 0 }}
-                      transition={spring}
-                      className="xray-item"
-                    >
-                      <Motion.img
-                        src={p.photo}
-                        alt={p.name}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={fade}
-                        className="xray-item-photo"
-                      />
-                      <div>
-                        <div className="xray-item-name">{p.name}</div>
-                        <div className="xray-item-role">{p.role}</div>
-                      </div>
-                    </Motion.div>
-                  ))}
+                  {items.map((p) => {
+                    const initials = p.name
+                      ? p.name
+                          .split(" ")
+                          .filter(Boolean)
+                          .map((part) => part[0])
+                          .join("")
+                          .slice(0, 2)
+                      : "?";
+                    return (
+                      <Motion.div
+                        key={p.id}
+                        layout
+                        initial={{ opacity: 0, y: 10, scale: 0.98, height: 0, marginBottom: 0 }}
+                        animate={{ opacity: 1, y: 0, scale: 1, height: "auto", marginBottom: 10 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.98, height: 0, marginBottom: 0 }}
+                        transition={spring}
+                        className="xray-item"
+                      >
+                        {p.photo ? (
+                          <Motion.img
+                            src={p.photo}
+                            alt={p.name}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={fade}
+                            className="xray-item-photo"
+                          />
+                        ) : (
+                          <div className="xray-item-photo xray-item-photo--fallback" aria-hidden>
+                            {initials}
+                          </div>
+                        )}
+                        <div>
+                          <div className="xray-item-name">{p.name}</div>
+                          <div className="xray-item-role">{p.role}</div>
+                        </div>
+                      </Motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               )}
             </Motion.div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import XRayPanel from "../components/XRayPanel";
 import { applyOverrides } from "../utils/castLocal";
+import { buildCastListFromTimeline } from "../utils/timelineLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
 import { findEpisodeByVideoId } from "../data/contents";
 import { getVideoEntry, videoLibrary } from "../data/videoLibrary";
@@ -185,7 +186,10 @@ export default function Watch() {
 
   // X-Ray panel
   const [xrayOpen, setXrayOpen] = useState(false);
-  const [allXray, setAllXray] = useState(() => [...xrayDemo]);
+  const [allXray, setAllXray] = useState(() => {
+    const timelineData = buildCastListFromTimeline(id, xrayDemo);
+    return timelineData ? timelineData.items : [...xrayDemo];
+  });
   const [xrayItems, setXrayItems] = useState([]);
 
   // auto-hide controls
@@ -323,11 +327,22 @@ export default function Watch() {
   useEffect(() => {
     function refresh() {
       if (!id) return;
-      setAllXray(applyOverrides(id, xrayDemo));
+      const timelineData = buildCastListFromTimeline(id, xrayDemo);
+      if (timelineData) {
+        setAllXray(timelineData.items);
+      } else {
+        setAllXray(applyOverrides(id, xrayDemo));
+      }
     }
     refresh();
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    window.addEventListener("storage", refresh);
+    window.addEventListener("lyra:timeline-updated", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("lyra:timeline-updated", refresh);
+    };
   }, [id]);
 
   // hız & ses
