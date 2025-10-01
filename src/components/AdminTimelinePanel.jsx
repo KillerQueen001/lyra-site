@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import "./AdminTimelinePanel.css";
 
 /**
  * AdminTimelinePanel – DnD Timeline (Premiere benzeri)
@@ -45,19 +46,13 @@ const DEFAULT_CAST_PALETTE = [
 ];
 
 
-function guid() {
-  return Math.random().toString(36).slice(2, 10);
-}
+const guid = () => Math.random().toString(36).slice(2, 10);
 
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-function snap(n, step = SNAP) {
-  return Math.round(n / step) * step;
-}
+const snap = (n, step = SNAP) => Math.round(n / step) * step;
 
-function secondsToTime(s) {
+const secondsToTime = (s) => {
   if (!isFinite(s)) return "0:00.000";
   const ms = Math.floor((s % 1) * 1000)
     .toString()
@@ -68,13 +63,12 @@ function secondsToTime(s) {
     .padStart(1, "0");
   const sec = (total % 60).toString().padStart(2, "0");
   return `${m}:${sec}.${ms}`;
-}
+};
 
-function normalizeKind(value) {
-  return typeof value === "string" && KIND_NAMES.includes(value)
+const normalizeKind = (value) =>
+  typeof value === "string" && KIND_NAMES.includes(value)
     ? value
     : "dialogue";
-}
 
 export default function AdminTimelinePanel({
   videoRef,
@@ -318,6 +312,8 @@ export default function AdminTimelinePanel({
     });
 
     setDragCreate({ active: false, startX: 0, currentX: 0, meta: null });
+
+  }
 
   function onTimelineDragLeave() {
     setDragCreate({ active: false, startX: 0, currentX: 0, meta: null });
@@ -614,94 +610,67 @@ export default function AdminTimelinePanel({
   }
 
   const selected = slots.find((s) => s.id === selectedId) || null;
+  const formattedCurrent = secondsToTime(currentTime);
+  const formattedDuration = secondsToTime(duration);
+  const selectedCastNames =
+    selected && Array.isArray(selected.cast) && selected.cast.length
+      ? selected.cast.join(" — ")
+      : "Cast seçilmedi";
+  const selectedSummary = selected
+    ? selected.label && selected.label.trim()
+      ? selected.label
+      : selected.kind
+      ? `Tür: ${selected.kind}`
+      : "Etiket ekleyin"
+    : "Slot seçilmedi";
+  const panelClassName = ["timeline-panel", className].filter(Boolean).join(" ");
 
   // === UI ===
   return (
-    <div className={`space-y-4 text-[#eee] ${className}`}>
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="flex-1 min-w-0">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">Cast Paleti</div>
-          <div className="flex flex-wrap gap-2">
-            {paletteCast.map((c) => (
-              <button
-                key={c}
-                draggable
-                onDragStart={(e) => onPaletteDragStart(e, { cast: c })}
-                className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] hover:bg-white/20 transition"
-                title="Sürükleyip timeline'a bırak"
-              >
-                {c}
-              </button>
-            ))}
-          </div>
+    <div className={panelClassName}>
+      <div className="timeline-toolbar">
+        <div className="timeline-toolbar-info">
+          <div className="timeline-toolbar-title">{selectedCastNames}</div>
+          <div className="timeline-toolbar-subtitle">{selectedSummary}</div>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">Türler</div>
-          <div className="flex flex-wrap gap-2">
-            {paletteKinds.map((k) => (
-              <button
-                key={k}
-                draggable
-                onDragStart={(e) => onPaletteDragStart(e, { kind: k })}
-                className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] hover:border-white/40 transition"
-                style={{ background: `${KIND_COLORS[k]}22`, color: "#fff" }}
-                title="Sürükleyip timeline'a bırak"
-              >
-                {k}
-              </button>
-            ))}
-          </div>
+        <div className="timeline-toolbar-time">
+          <span className="timeline-time-current">{formattedCurrent}</span>
+          <span className="timeline-time-divider">/</span>
+          <span className="timeline-time-total">{formattedDuration}</span>
         </div>
-
-        <div className="flex w-full flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs xl:w-auto xl:min-w-[220px]">
-          <div className="font-semibold uppercase tracking-wide text-white/60">Kısayollar</div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-full bg-[#7c4bd9] px-3 py-1.5 font-medium hover:opacity-90"
-              onClick={() => addFromCurrent(2)}
-            >
-              Şu an +2s
-            </button>
-            <button
-              type="button"
-              className="rounded-full bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c] disabled:opacity-50"
-              onClick={() => duplicateSelected()}
-              disabled={!selectedId}
-            >
-              Kopyala
-            </button>
-            <button
-              type="button"
-              className="rounded-full bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
-              onClick={() => setImportOpen(true)}
-            >
-              İçe Aktar
-            </button>
-            <button
-              type="button"
-              className="rounded-full bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
-              onClick={handleExport}
-            >
-              Export
-            </button>
-            <button
-              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
-              onClick={() => {
-                if (typeof onSave === "function") {
-                  onSave(slots);
-                }
-              }}
-            >
-              Kaydet
-            </button>
-          </div>
+        <div className="timeline-toolbar-actions">
+          <button
+            type="button"
+            className="timeline-action timeline-action--ghost"
+            onClick={() => addFromCurrent(2)}
+          >
+            +2s
+          </button>
+          <button
+            type="button"
+            className="timeline-action timeline-action--danger"
+            onClick={removeSelected}
+            disabled={!selectedId}
+          >
+            Sil
+          </button>
+          <button
+            type="button"
+            className="timeline-action timeline-action--primary"
+            onClick={() => {
+              if (typeof onSave === "function") {
+                onSave(slots);
+              }
+            }}
+          >
+            Kaydet
+          </button>
         </div>
       </div>
 
       <div
         ref={timelineRef}
-        className="relative h-36 select-none overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(30,30,48,0.95),rgba(12,12,18,0.95))] shadow-inner shadow-black/40 sm:h-40"
+        className="timeline-track"
         onMouseDown={onMouseDownBlank}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
@@ -713,14 +682,14 @@ export default function AdminTimelinePanel({
 
         {dragCreate.active && (
           <div
-            className="absolute top-2 h-[80px] rounded-md border-2 border-dashed"
+            className="timeline-slot-preview"
             style={{
               left: Math.min(dragCreate.startX, dragCreate.currentX),
               width: Math.max(6, Math.abs(dragCreate.currentX - dragCreate.startX)),
               borderColor:
                 dragCreate.meta && dragCreate.meta.kind
                   ? KIND_COLORS[dragCreate.meta.kind]
-                  : "#bfb8d6",
+                  : "#c3c0f5",
             }}
           />
         )}
@@ -735,14 +704,86 @@ export default function AdminTimelinePanel({
           />
         ))}
 
-        <Playhead x={timeToX(currentTime)} onSeek={(t) => seek(t)} xToTime={xToTime} />
+        <Playhead x={timeToX(currentTime)} onSeek={seek} xToTime={xToTime} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-[#1b1b24]/80 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-white/60 mb-2">Seçili Slot</div>
+      <div className="timeline-secondary-row">
+        <div className="timeline-palette">
+          <div className="timeline-panel-heading">Cast Paleti</div>
+          <div className="timeline-chip-collection">
+            {paletteCast.map((c) => (
+              <button
+                key={c}
+                type="button"
+                draggable
+                onDragStart={(e) => onPaletteDragStart(e, { cast: c })}
+                className="timeline-chip"
+                title="Sürükleyip timeline'a bırak"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="timeline-palette">
+          <div className="timeline-panel-heading">Türler</div>
+          <div className="timeline-chip-collection">
+            {paletteKinds.map((k) => (
+              <button
+                key={k}
+                type="button"
+                draggable
+                onDragStart={(e) => onPaletteDragStart(e, { kind: k })}
+                className="timeline-chip timeline-chip--kind"
+                style={{ backgroundColor: `${KIND_COLORS[k]}24`, borderColor: `${KIND_COLORS[k]}55` }}
+                title="Sürükleyip timeline'a bırak"
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="timeline-secondary-actions">
+          <div className="timeline-panel-heading">Hızlı İşlemler</div>
+          <div className="timeline-secondary-buttons">
+            <button
+              type="button"
+              className="timeline-secondary-button"
+              onClick={() => addFromCurrent(2)}
+            >
+              Şu an +2s
+            </button>
+            <button
+              type="button"
+              className="timeline-secondary-button"
+              onClick={duplicateSelected}
+              disabled={!selectedId}
+            >
+              Kopyala
+            </button>
+            <button
+              type="button"
+              className="timeline-secondary-button"
+              onClick={() => setImportOpen(true)}
+            >
+              İçe Aktar
+            </button>
+            <button
+              type="button"
+              className="timeline-secondary-button"
+              onClick={handleExport}
+            >
+              Dışa Aktar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="timeline-details-row">
+        <div className="timeline-selection-panel">
+          <div className="timeline-panel-heading">Seçili Slot</div>
           {selected ? (
-            <div className="space-y-2 text-sm">
+            <div className="timeline-selection-fields">
               <FieldNumber
                 label="Başlangıç"
                 value={selected.start}
@@ -770,18 +811,18 @@ export default function AdminTimelinePanel({
                 onChange={(v) => updateSelected({ label: v })}
                 placeholder="örn. Replik 3"
               />
-              <div className="flex items-center gap-2">
-                <label className="w-16 opacity-70 text-xs">Cast</label>
+              <div className="timeline-field">
+                <label className="timeline-field-label">Cast</label>
                 <CastEditor
                   value={Array.isArray(selected.cast) ? selected.cast : []}
                   onChange={(next) => updateSelected({ cast: next })}
                   suggestions={paletteCast}
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <label className="w-16 opacity-70 text-xs">Tür</label>
+              <div className="timeline-field">
+                <label className="timeline-field-label">Tür</label>
                 <select
-                  className="rounded border border-white/10 bg-[#0f0f14] px-2 py-1 text-sm"
+                  className="timeline-select"
                   value={selected.kind == null || selected.kind === "" ? "dialogue" : selected.kind}
                   onChange={(e) => {
                     const k = normalizeKind(e.target.value);
@@ -795,33 +836,33 @@ export default function AdminTimelinePanel({
                   ))}
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="w-16 opacity-70 text-xs">Renk</label>
+              <div className="timeline-field">
+                <label className="timeline-field-label">Renk</label>
                 <input
                   type="color"
-                  className="h-8 w-12 bg-transparent"
+                  className="timeline-color"
                   value={selected.color == null || selected.color === "" ? "#7c4bd9" : selected.color}
                   onChange={(e) => updateSelected({ color: e.target.value })}
                 />
               </div>
-              <div className="flex flex-wrap gap-2 pt-2 text-xs">
+              <div className="timeline-selection-actions">
                 <button
                   type="button"
-                  className="rounded bg-red-500/90 px-3 py-1.5 font-medium hover:bg-red-500"
+                  className="timeline-secondary-button timeline-secondary-button--danger"
                   onClick={removeSelected}
                 >
                   Sil
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
+                  className="timeline-secondary-button"
                   onClick={() => seek(selected.start)}
                 >
                   Başa Git
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-[#3a334a] px-3 py-1.5 font-medium hover:bg-[#4a405c]"
+                  className="timeline-secondary-button"
                   onClick={() => seek(selected.end)}
                 >
                   Sona Git
@@ -829,53 +870,45 @@ export default function AdminTimelinePanel({
               </div>
             </div>
           ) : (
-            <div className="text-xs text-[#bfb8d6]">
-              Paletten bir öğeyi timeline'a sürükleyin veya boş alana basılı tutup sürükleyerek yeni bir slot çizin.
+            <div className="timeline-selection-empty">
+              Paletten bir öğe sürükleyerek veya boş alana tıklayıp sürükleyerek yeni bir slot oluşturun.
             </div>
           )}
         </div>
-        <div className="rounded-2xl border border-white/10 bg-[#1b1b24]/60 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-white/60 mb-2">İpuçları</div>
-          <ul className="space-y-2 text-xs text-[#bfb8d6]">
-            <li>Cast çiplerini sürükleyip bırakarak hızlıca yeni slotlar oluşturabilirsiniz.</li>
-            <li>
-              Tür çiplerini mevcut slotların üzerine bırakarak diyalog/müzik/sfx gibi etiketleri anında değiştirin.
-            </li>
-            <li>Boş alana basılı tutup sürükleyerek serbest uzunlukta yeni slot çizebilirsiniz.</li>
-            <li>Seçili slot için klavyeden ←/→ ile 0.1s, Shift ile 0.5s adım yapabilirsiniz.</li>
-            <li>JSON veya CSV içe aktarma ile dışarıdaki kayıtları zaman çizelgesine yükleyebilirsiniz.</li>
+        <div className="timeline-tips">
+          <div className="timeline-panel-heading">İpuçları</div>
+          <ul>
+            <li>Cast çiplerini sürükleyerek hızlıca yeni slotlar açabilirsiniz.</li>
+            <li>Tür çiplerini mevcut slotların üzerine bırakarak diyalog/müzik/sfx etiketlerini anında değiştirin.</li>
+            <li>Boş alanda sürükleyerek serbest uzunlukta yeni slot çizebilirsiniz.</li>
+            <li>Klavyeden ←/→ ile 0.1s, Shift ile 0.5s adımlayarak hassas ayar yapın.</li>
+            <li>JSON veya CSV içe aktarımıyla harici kayıtları zaman çizelgesine yükleyin.</li>
           </ul>
         </div>
       </div>
 
       {importOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onMouseDown={() => setImportOpen(false)}
-        >
-          <div
-            className="w-[680px] max-w-[92vw] rounded-xl border border-white/10 bg-[#1b1b24] p-4"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="text-sm font-semibold mb-2">Bulk Import (JSON/CSV)</div>
+        <div className="timeline-modal-backdrop" onMouseDown={() => setImportOpen(false)}>
+          <div className="timeline-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="timeline-modal-title">Bulk Import (JSON/CSV)</div>
             <textarea
-              className="h-60 w-full rounded border border-white/10 bg-[#0f0f14] p-2 text-sm"
+              className="timeline-textarea"
               placeholder='JSON array veya CSV: start,end,label,cast1|cast2,kind'
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
             />
-            {error && <div className="mt-1 text-xs text-red-400">{error}</div>}
-            <div className="mt-3 flex justify-end gap-2">
+            {error && <div className="timeline-error">{error}</div>}
+            <div className="timeline-modal-actions">
               <button
                 type="button"
-                className="rounded bg-[#3a334a] px-3 py-1.5 text-sm hover:bg-[#4a405c]"
+                className="timeline-secondary-button"
                 onClick={() => setImportOpen(false)}
               >
                 İptal
               </button>
               <button
                 type="button"
-                className="rounded bg-emerald-600 px-3 py-1.5 text-sm hover:bg-emerald-500"
+                className="timeline-action timeline-action--primary"
                 onClick={handleImport}
               >
                 İçe Aktar
@@ -899,27 +932,27 @@ function Grid({ duration, width }) {
   for (let t = 0; t <= duration; t += majorEvery) majors.push(t);
 
   return (
-    <div className="absolute inset-0">
+    <div className="timeline-grid">
       {minors.map((t) => (
         <div
           key={`m${t}`}
-          className="absolute top-0 bottom-0 border-r border-white/5"
+          className="timeline-grid-line timeline-grid-line--minor"
           style={{ left: t * pxPerSec }}
         />
       ))}
       {majors.map((t) => (
         <div
           key={`M${t}`}
-          className="absolute top-0 bottom-0 border-r border-white/20"
+          className="timeline-grid-line timeline-grid-line--major"
           style={{ left: t * pxPerSec }}
         />
       ))}
-      <div className="absolute bottom-0 left-0 right-0 bg-white/5 h-6" />
+      <div className="timeline-grid-footer" />
       {majors.map((t) => (
         <div
           key={`L${t}`}
-          className="absolute bottom-0 translate-y-[-2px] text-[10px] text-white/80"
-          style={{ left: t * pxPerSec + 4 }}
+          className="timeline-grid-label"
+          style={{ left: t * pxPerSec + 6 }}
         >
           {secondsToTime(t)}
         </div>
@@ -944,26 +977,24 @@ function SlotView({ slot, selected, toX, onMouseDown }) {
 
   return (
     <div
-      className={`absolute top-2 h-[80px] rounded-lg shadow ${
-        selected ? "ring-2 ring-white/80" : "ring-1 ring-white/10"
-      }`}
-      style={{ left, width: w, background: color + "33", borderColor: color }}
+      className={`timeline-slot${selected ? " is-selected" : ""}`}
+      style={{ left, width: w, backgroundColor: `${color}33`, borderColor: color }}
       onMouseDown={(e) => onMouseDown(e, slot, "move")}
     >
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/10 hover:bg-white/20"
+        className="timeline-slot-handle timeline-slot-handle--left"
         onMouseDown={(e) => onMouseDown(e, slot, "resize-l")}
         title="Sola uzat/kısalt"
       />
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/10 hover:bg-white/20"
+        className="timeline-slot-handle timeline-slot-handle--right"
         onMouseDown={(e) => onMouseDown(e, slot, "resize-r")}
         title="Sağa uzat/kısalt"
       />
-      <div className="px-2 py-1 text-[11px] text-white/90 truncate">
-        <div className="font-semibold truncate">{slot.label || slot.kind || "(Etiketsiz)"}</div>
-        <div className="text-white/80 truncate">{Array.isArray(slot.cast) ? slot.cast.join(", ") : ""}</div>
-        <div className="text-white/70">
+      <div className="timeline-slot-content">
+        <div className="timeline-slot-title">{slot.label || slot.kind || "(Etiketsiz)"}</div>
+        <div className="timeline-slot-cast">{Array.isArray(slot.cast) ? slot.cast.join(", ") : ""}</div>
+        <div className="timeline-slot-time">
           {secondsToTime(slot.start)} – {secondsToTime(slot.end)}
         </div>
       </div>
@@ -974,30 +1005,27 @@ function SlotView({ slot, selected, toX, onMouseDown }) {
 function Playhead({ x, onSeek, xToTime }) {
   return (
     <div
-      className="absolute inset-0"
+      className="timeline-playhead"
       onDoubleClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect()
+        const rect = e.currentTarget.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         onSeek(xToTime(mouseX));
       }}
     >
-      <div
-        className="absolute top-0 bottom-0 w-px bg-white left-0"
-        style={{ transform: `translateX(${x}px)` }}
-      />
-      <div className="absolute top-0 left-0 right-0 h-full" />
+      <div className="timeline-playhead-line" style={{ transform: `translateX(${x}px)` }} />
+      <div className="timeline-playhead-cap" style={{ transform: `translateX(${x}px)` }} />
     </div>
   );
 }
 
 function FieldNumber({ label, value, onChange }) {
   return (
-    <div className="flex items-center gap-2">
-      <label className="w-16 opacity-70 text-xs">{label}</label>
+    <div className="timeline-field">
+      <label className="timeline-field-label">{label}</label>
       <input
         type="number"
         step={SNAP}
-        className="w-full bg-[#0f0f14] rounded px-2 py-1 border border-white/10"
+        className="timeline-input"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       />
@@ -1007,11 +1035,11 @@ function FieldNumber({ label, value, onChange }) {
 
 function FieldText({ label, value, onChange, placeholder }) {
   return (
-    <div className="flex items-center gap-2">
-      <label className="w-16 opacity-70 text-xs">{label}</label>
+    <div className="timeline-field">
+      <label className="timeline-field-label">{label}</label>
       <input
         type="text"
-        className="w-full bg-[#0f0f14] rounded px-2 py-1 border border-white/10"
+        className="timeline-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -1023,13 +1051,14 @@ function FieldText({ label, value, onChange, placeholder }) {
 function CastEditor({ value, onChange }) {
   const [v, setV] = useState("");
   return (
-    <div className="flex-1">
-      <div className="flex flex-wrap gap-1 mb-1">
+    <div className="timeline-cast-editor">
+      <div className="timeline-cast-selected">
         {value.map((c, i) => (
-          <span key={`${c}-${i}`} className="text-[11px] px-2 py-1 rounded-full bg-white/10">
+          <span key={`${c}-${i}`} className="timeline-cast-chip">
             {c}
             <button
-              className="ml-1 text-white/60 hover:text-white"
+              type="button"
+              className="timeline-chip-remove"
               title="Kaldır"
               onClick={() => onChange(value.filter((_, idx) => idx !== i))}
             >
@@ -1038,12 +1067,12 @@ function CastEditor({ value, onChange }) {
           </span>
         ))}
       </div>
-      <div className="flex gap-2">
+      <div className="timeline-cast-input-row">
         <input
           value={v}
           onChange={(e) => setV(e.target.value)}
           placeholder="İsim yaz ve Enter"
-          className="flex-1 bg-[#0f0f14] rounded px-2 py-1 border border-white/10 text-sm"
+          className="timeline-input"
           onKeyDown={(e) => {
             if (e.key === "Enter" && v.trim()) {
               const setCast = new Set([...value, v.trim()]);
@@ -1053,7 +1082,8 @@ function CastEditor({ value, onChange }) {
           }}
         />
         <button
-          className="px-3 py-1.5 rounded bg-[#3a334a] hover:bg-[#4a405c]"
+          type="button"
+          className="timeline-secondary-button timeline-secondary-button--solid"
           onClick={() => {
             if (!v.trim()) return;
             const setCast = new Set([...value, v.trim()]);

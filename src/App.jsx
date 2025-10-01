@@ -19,6 +19,8 @@ import Contact from "./pages/Contact";
 import ContentDetail from "./pages/ContentDetail";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
+import VideoEditor from "./pages/VideoEditor";
+import AdminTimeline from "./pages/AdminTimeline";
 
 
 // Navbar component
@@ -62,6 +64,8 @@ export default function App() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/" element={<Home />} />
         <Route path="/watch/:id" element={<Watch />} />
+        <Route path="/admin/video-editor" element={<VideoEditor />} />
+        <Route path="/admin/timeline" element={<AdminTimeline />} />
       </Routes>
     </Router>
   );
