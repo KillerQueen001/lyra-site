@@ -3,7 +3,11 @@ import AdminTimelinePanel from "../components/AdminTimelinePanel";
 import StudioVideoPlayer from "../components/StudioVideoPlayer";
 import { videoLibrary } from "../data/videoLibrary";
 import { xrayDemo } from "../data/xrayDemo";
-import { loadVideoTimeline, saveVideoTimeline } from "../utils/timelineLocal";
+import {
+  loadVideoTimeline,
+  saveVideoTimeline,
+  syncVideoTimeline,
+} from "../utils/timelineLocal";
 import "./AdminTimeline.css";
 
 const SAMPLE_CAST = [
@@ -66,6 +70,7 @@ export default function AdminTimeline() {
     DEFAULT_CAST_LIBRARY[0]?.id || null
   );
   const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [persistenceStatus, setPersistenceStatus] = useState(null);
 
   useEffect(() => {
     const stored = loadVideoTimeline(selectedVideoId);
@@ -76,12 +81,27 @@ export default function AdminTimeline() {
     setSlots(nextSlots);
     setCastLibrary(nextCastLibrary);
     setLastSavedAt(stored?.updatedAt ? new Date(stored.updatedAt) : null);
+    setPersistenceStatus(null);
     setSelectedCastId((prev) => {
       if (prev && nextCastLibrary.some((cast) => cast.id === prev)) {
         return prev;
       }
       return nextCastLibrary[0]?.id || null;
     });
+    let cancelled = false;
+    syncVideoTimeline(selectedVideoId).then((synced) => {
+      if (cancelled || !synced) return;
+      setSlots(synced.slots || INITIAL_TIMELINE);
+      setCastLibrary(
+        synced.castLibrary?.length ? synced.castLibrary : DEFAULT_CAST_LIBRARY
+      );
+      if (synced.updatedAt) {
+        setLastSavedAt(new Date(synced.updatedAt));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedVideoId]);
 
   const castPalette = useMemo(
@@ -101,7 +121,28 @@ export default function AdminTimeline() {
       castLibrary,
     });
     setLastSavedAt(saved?.updatedAt ? new Date(saved.updatedAt) : new Date());
+    setPersistenceStatus("local");
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleTimelineEvent = (event) => {
+      const detail = event.detail || {};
+      if (detail.videoId !== selectedVideoId) return;
+      if (detail.updatedAt) {
+        setLastSavedAt(new Date(detail.updatedAt));
+      }
+      if (detail.source === "remote") {
+        setPersistenceStatus("remote");
+      } else if (detail.source === "download") {
+        setPersistenceStatus("download");
+      }
+    };
+    window.addEventListener("lyra:timeline-updated", handleTimelineEvent);
+    return () => {
+      window.removeEventListener("lyra:timeline-updated", handleTimelineEvent);
+    };
+  }, [selectedVideoId]);
 
   const handleCastDragStart = (event, voice) => {
     event.dataTransfer.setData(
@@ -139,6 +180,16 @@ export default function AdminTimeline() {
           {lastSavedAt && (
             <span>
               Son kaydetme: {lastSavedAt.toLocaleTimeString("tr-TR")}
+            </span>
+          )}
+          {persistenceStatus === "remote" && (
+            <span className="admin-timeline-status admin-timeline-status--remote">
+              Dosya kaynağı güncellendi
+            </span>
+          )}
+          {persistenceStatus === "download" && (
+            <span className="admin-timeline-status admin-timeline-status--download">
+              JSON dosyası indirildi
             </span>
           )}
         </div>
