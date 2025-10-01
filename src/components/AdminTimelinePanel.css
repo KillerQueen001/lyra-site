@@ -176,6 +176,17 @@
   pointer-events: none;
 }
 
+.timeline-marquee {
+  position: absolute;
+  border: 1px solid rgba(132, 167, 255, 0.8);
+  background: rgba(132, 167, 255, 0.18);
+  box-shadow: 0 0 0 1px rgba(132, 167, 255, 0.35);
+  border-radius: 18px;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 40;
+}
+
 .timeline-slot {
   position: absolute;
   top: var(--timeline-slot-top, 26px);
@@ -424,6 +435,16 @@
   color: rgba(206, 209, 255, 0.6);
   font-size: 0.85rem;
   line-height: 1.6;
+}
+
+.timeline-selection-multi {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px dashed rgba(152, 159, 255, 0.45);
+  background: rgba(80, 86, 158, 0.22);
+  color: rgba(214, 218, 255, 0.75);
+  font-size: 0.88rem;
 }
 
 .timeline-tips {

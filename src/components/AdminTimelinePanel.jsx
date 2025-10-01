@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./AdminTimelinePanel.css";
 
 /**
@@ -104,7 +104,8 @@ export default function AdminTimelinePanel({
   const [slots, setSlots] = useState(() =>
     [...initialSlots].sort((a, b) => a.start - b.start)
   );
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [primarySelectedId, setPrimarySelectedId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragMode, setDragMode] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
@@ -114,6 +115,39 @@ export default function AdminTimelinePanel({
   const [viewStart, setViewStart] = useState(0);
   const [viewDuration, setViewDuration] = useState(null);
   const [verticalScale, setVerticalScale] = useState(1);
+  const [marquee, setMarquee] = useState({
+    active: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+  });
+  const selectionSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds((prev) => (prev.length ? [] : prev));
+    setPrimarySelectedId(null);
+  }, []);
+
+  const selectIds = useCallback((ids, primary = null) => {
+    const unique = Array.from(new Set(ids.filter((id) => typeof id === "string" && id)));
+    setSelectedIds((prev) => {
+      if (prev.length === unique.length && prev.every((id, index) => id === unique[index])) {
+        return prev;
+      }
+      return unique;
+    });
+    setPrimarySelectedId((prevPrimary) => {
+      if (primary && unique.includes(primary)) {
+        return primary;
+      }
+      if (!unique.length) {
+        return null;
+      }
+      const fallback = unique[unique.length - 1];
+      return fallback === prevPrimary ? prevPrimary : fallback;
+    });
+  }, []);
 
   // DnD palet → timeline geçici önizleme
   const [dragCreate, setDragCreate] = useState({
@@ -138,8 +172,8 @@ export default function AdminTimelinePanel({
 
   useEffect(() => {
     setSlots([...initialSlots].sort((a, b) => a.start - b.start));
-    setSelectedId(null);
-  }, [initialSlots]);
+    clearSelection();
+  }, [initialSlots, clearSelection]);
 
   useEffect(() => {
     if (!duration || duration <= 0) return;
@@ -179,37 +213,69 @@ export default function AdminTimelinePanel({
   // Keyboard helpers
   useEffect(() => {
     const onKey = (e) => {
-      if (!selectedId || !videoRef.current) return;
-      const idx = slots.findIndex((s) => s.id === selectedId);
-      if (idx === -1) return;
-      const s = { ...slots[idx] };
-      const step = e.shiftKey ? 0.5 : 0.1;
-      let changed = false;
-      if (e.key === "ArrowLeft") {
-        const len = s.end - s.start;
-        s.start = clamp(s.start - step, 0, Math.max(0, duration - MIN_LEN));
-        s.end = clamp(s.start + len, s.start + MIN_LEN, duration);
-        changed = true;
-      } else if (e.key === "ArrowRight") {
-        const len = s.end - s.start;
-        s.start = clamp(s.start + step, 0, Math.max(0, duration - MIN_LEN));
-        s.end = clamp(s.start + len, s.start + MIN_LEN, duration);
-        changed = true;
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        setSlots((prev) => prev.filter((x) => x.id !== selectedId));
-        setSelectedId(null);
+      if (!selectedIds.length || !videoRef.current) return;
+      if (e.target && e.target instanceof HTMLElement) {
+        const tag = e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) {
+          return;
+        }
       }
-      if (changed) {
-        s.start = snap(s.start);
-        s.end = snap(s.end);
-        const next = [...slots];
-        next[idx] = s;
-        setSlots(next.sort((a, b) => a.start - b.start));
+
+      const snapshots = selectedIds
+        .map((id) => slots.find((slot) => slot.id === id))
+        .filter(Boolean);
+      if (!snapshots.length) return;
+      const baseDuration = duration && duration > 0 ? duration : effectiveViewDuration;
+      const fallbackDuration = snapshots.reduce((max, item) => Math.max(max, item.end), 0);
+      const timelineDuration = baseDuration && baseDuration > 0 ? baseDuration : fallbackDuration;
+      if (timelineDuration <= 0) return;
+
+      const step = e.shiftKey ? 0.5 : 0.1;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const direction = e.key === "ArrowLeft" ? -1 : 1;
+        const desiredDelta = direction * step;
+        const minDelta = snapshots.reduce((acc, item) => Math.max(acc, -item.start), -Infinity);
+        const maxDelta = snapshots.reduce(
+          (acc, item) => Math.min(acc, timelineDuration - item.end),
+          Infinity
+        );
+        const allowedDelta = clamp(desiredDelta, minDelta, maxDelta);
+        if (!Number.isFinite(allowedDelta) || allowedDelta === 0) return;
+        const map = new Map(snapshots.map((snap) => [snap.id, snap]));
+        setSlots((prev) => {
+          const next = prev.map((slot) => {
+            const original = map.get(slot.id);
+            if (!original) return slot;
+            const len = original.end - original.start;
+            const start = snap(
+              clamp(original.start + allowedDelta, 0, Math.max(0, timelineDuration - len))
+            );
+            const end = snap(clamp(start + len, start + MIN_LEN, timelineDuration));
+            return { ...slot, start, end };
+          });
+          return next.sort((a, b) => a.start - b.start);
+        });
+        return;
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        setSlots((prev) => prev.filter((slot) => !selectionSet.has(slot.id)));
+        clearSelection();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, slots, duration, videoRef]);
+  }, [
+    selectedIds,
+    slots,
+    duration,
+    effectiveViewDuration,
+    videoRef,
+    selectionSet,
+    clearSelection,
+  ]);
 
   const effectiveViewDuration = useMemo(() => {
     if (duration > 0) {
@@ -235,53 +301,75 @@ export default function AdminTimelinePanel({
     videoRef.current.currentTime = clamp(t, 0, duration || 0);
   }
 
-  function onTimelineWheel(e) {
-    if (width <= 0) return;
-    if (!(e.shiftKey || e.ctrlKey || e.altKey)) return;
-    if (!duration && (e.shiftKey || e.ctrlKey)) return;
-    e.preventDefault();
+  const onTimelineWheel = useCallback(
+    (e) => {
+      if (width <= 0) return;
+      if (!(e.shiftKey || e.ctrlKey || e.altKey)) return;
+      if (!duration && (e.shiftKey || e.ctrlKey)) return;
 
-    if (e.shiftKey) {
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-      const baseDuration = duration > 0 ? duration : effectiveViewDuration;
-      const offset = (delta / Math.max(1, width)) * effectiveViewDuration;
-      setViewStart((prev) => {
-        const next = clamp(prev + offset, 0, Math.max(0, baseDuration - effectiveViewDuration));
-        return Number.isFinite(next) ? next : prev;
-      });
-      return;
-    }
+      if (typeof e.preventDefault === "function") e.preventDefault();
+      if (typeof e.stopPropagation === "function") e.stopPropagation();
 
-    if (e.ctrlKey) {
-      const rect = timelineRef.current?.getBoundingClientRect();
-      const pointerRatio =
-        rect && width > 0 ? clamp((e.clientX - rect.left) / width, 0, 1) : 0.5;
-      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-      setViewDuration((prevDuration) => {
-        const baseDuration = duration > 0 ? duration : prevDuration || effectiveViewDuration;
-        const current = prevDuration && prevDuration > 0 ? prevDuration : effectiveViewDuration;
-        const factor = Math.exp(delta * 0.0025);
-        const minCandidate = Math.min(baseDuration, MIN_VIEW_WINDOW);
-        const minWindow = minCandidate > 0 ? minCandidate : Math.min(current, baseDuration);
-        const maxWindow = baseDuration || current || 1;
-        const next = clamp(current * factor, minWindow, maxWindow);
-        setViewStart((prevStart) => {
-          const focusTime = (prevStart || 0) + current * pointerRatio;
-          const desiredStart = focusTime - next * pointerRatio;
-          const maxStartValue = Math.max(0, maxWindow - next);
-          return clamp(desiredStart, 0, maxStartValue);
+      if (e.shiftKey) {
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        const baseDuration = duration > 0 ? duration : effectiveViewDuration;
+        const offset = (delta / Math.max(1, width)) * effectiveViewDuration;
+        setViewStart((prev) => {
+          const next = clamp(prev + offset, 0, Math.max(0, baseDuration - effectiveViewDuration));
+          return Number.isFinite(next) ? next : prev;
         });
-        return next;
-      });
-      return;
-    }
+        return;
+      }
 
-    if (e.altKey) {
-      const factor = Math.exp(-e.deltaY * 0.0025);
-      setVerticalScale((prev) => clamp(prev * factor, MIN_VERTICAL_SCALE, MAX_VERTICAL_SCALE));
-      return;
-    }
-  }
+      if (e.ctrlKey) {
+        const rect = timelineRef.current?.getBoundingClientRect();
+        const pointerRatio =
+          rect && width > 0 ? clamp((e.clientX - rect.left) / width, 0, 1) : 0.5;
+        const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        setViewDuration((prevDuration) => {
+          const baseDuration = duration > 0 ? duration : prevDuration || effectiveViewDuration;
+          const current = prevDuration && prevDuration > 0 ? prevDuration : effectiveViewDuration;
+          const factor = Math.exp(delta * 0.0025);
+          const minCandidate = Math.min(baseDuration, MIN_VIEW_WINDOW);
+          const minWindow = minCandidate > 0 ? minCandidate : Math.min(current, baseDuration);
+          const maxWindow = baseDuration || current || 1;
+          const next = clamp(current * factor, minWindow, maxWindow);
+          setViewStart((prevStart) => {
+            const focusTime = (prevStart || 0) + current * pointerRatio;
+            const desiredStart = focusTime - next * pointerRatio;
+            const maxStartValue = Math.max(0, maxWindow - next);
+            return clamp(desiredStart, 0, maxStartValue);
+          });
+          return next;
+        });
+        return;
+      }
+
+      if (e.altKey) {
+        const factor = Math.exp(-e.deltaY * 0.0025);
+        setVerticalScale((prev) => clamp(prev * factor, MIN_VERTICAL_SCALE, MAX_VERTICAL_SCALE));
+      }
+    },
+    [
+      width,
+      duration,
+      effectiveViewDuration,
+      setViewStart,
+      setViewDuration,
+      setVerticalScale,
+    ]
+  );
+
+  const trackNode = timelineRef.current;
+
+  useEffect(() => {
+    if (!trackNode) return undefined;
+    const handler = (event) => onTimelineWheel(event);
+    trackNode.addEventListener("wheel", handler, { passive: false });
+    return () => {
+      trackNode.removeEventListener("wheel", handler);
+    };
+  }, [trackNode, onTimelineWheel]);
 
   // === Palette DnD ===
   function onPaletteDragStart(e, meta) {
@@ -419,80 +507,181 @@ export default function AdminTimelinePanel({
       kind: "dialogue",
     };
     setSlots((prev) => [...prev, newSlot].sort((a, b) => a.start - b.start));
-    setSelectedId(newSlot.id);
+    selectIds([newSlot.id], newSlot.id);
   }
 
   function duplicateSelected() {
-    if (!selectedId) return;
-    const s = slots.find((x) => x.id === selectedId);
+    if (!primarySelectedId) return;
+    const s = slots.find((x) => x.id === primarySelectedId);
     if (!s) return;
     const len = s.end - s.start;
     const start = snap(clamp(s.end + 0.05, 0, Math.max(0, duration - len)));
     const end = snap(clamp(start + len, start + MIN_LEN, duration));
     const newSlot = { ...s, id: guid(), start, end };
     setSlots((prev) => [...prev, newSlot].sort((a, b) => a.start - b.start));
-    setSelectedId(newSlot.id);
+    selectIds([newSlot.id], newSlot.id);
   }
 
   // Drag logic (slot move/resize)
   function onMouseDownSlot(e, slot, mode) {
     e.stopPropagation();
+    if (e.button !== 0) return;
     const timelineEl = timelineRef.current;
     if (!timelineEl) return;
     const rect = timelineEl.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const offsetWithin = mouseX - timeToX(slot.start);
-    setSelectedId(slot.id);
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    let activeSelection = selectedIds;
+    if (additive) {
+      const merged = Array.from(new Set([...selectedIds, slot.id]));
+      activeSelection = merged;
+      selectIds(merged, slot.id);
+    } else if (!selectionSet.has(slot.id)) {
+      activeSelection = [slot.id];
+      selectIds(activeSelection, slot.id);
+    }
+
+    const snapshots = activeSelection
+      .map((id) => slots.find((s) => s.id === id))
+      .filter(Boolean)
+      .map((s) => ({ id: s.id, start: s.start, end: s.end }));
+
+    if (!snapshots.length) {
+      snapshots.push({ id: slot.id, start: slot.start, end: slot.end });
+      selectIds([slot.id], slot.id);
+    }
+
     setIsDragging(true);
     setDragMode(mode);
     setDragOffset(offsetWithin);
-    setDragStartSnapshot({ ...slot });
+    setDragStartSnapshot({
+      slots: snapshots,
+      primaryId: slot.id,
+    });
   }
 
   function onMouseDownBlank(e) {
+    if (e.button !== 0) return;
     if (e.target !== e.currentTarget) return;
-    setSelectedId(null);
-  }
-
-  function onMouseMove(e) {
-    if (!isDragging || !dragMode || !selectedId) return;
-    const idx = slots.findIndex((s) => s.id === selectedId);
-    if (idx === -1) return;
     const timelineEl = timelineRef.current;
     if (!timelineEl) return;
     const rect = timelineEl.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
+    const startX = clamp(e.clientX - rect.left, 0, width);
+    const startY = clamp(e.clientY - rect.top, 0, rect.height);
+    setMarquee({ active: true, startX, startY, currentX: startX, currentY: startY });
+    clearSelection();
+  }
 
-    const next = [...slots];
-    const s = { ...next[idx] };
-    const startSnapshot =
-      dragStartSnapshot && typeof dragStartSnapshot.start === "number"
-        ? dragStartSnapshot.start
-        : 0;
-    const endSnapshot =
-      dragStartSnapshot && typeof dragStartSnapshot.end === "number"
-        ? dragStartSnapshot.end
-        : 0;
-    const len = endSnapshot - startSnapshot;
+  function onMouseMove(e) {
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
+    const mouseX = clamp(e.clientX - rect.left, 0, width);
+    const mouseY = clamp(e.clientY - rect.top, 0, rect.height);
 
-    if (dragMode === "move") {
-      const x = mouseX - dragOffset;
-      const t = snap(clamp(xToTime(x), 0, Math.max(0, duration - len)));
-      s.start = t;
-      s.end = snap(clamp(t + len, t + MIN_LEN, duration));
-    } else if (dragMode === "resize-l") {
-      const t = snap(clamp(xToTime(mouseX), 0, s.end - MIN_LEN));
-      s.start = t;
-    } else if (dragMode === "resize-r") {
-      const t = snap(clamp(xToTime(mouseX), s.start + MIN_LEN, duration));
-      s.end = t;
+    if (isDragging && dragMode) {
+      e.preventDefault();
     }
 
-    next[idx] = s;
-    setSlots(next.sort((a, b) => a.start - b.start));
+    if (marquee.active) {
+      setMarquee((prev) => {
+        const nextState = { ...prev, currentX: mouseX, currentY: mouseY };
+        const minX = Math.min(nextState.startX, nextState.currentX);
+        const maxX = Math.max(nextState.startX, nextState.currentX);
+        const minY = Math.min(nextState.startY, nextState.currentY);
+        const maxY = Math.max(nextState.startY, nextState.currentY);
+        const slotTop = BASE_SLOT_TOP * verticalScale;
+        const slotBottom = slotTop + BASE_SLOT_HEIGHT * verticalScale;
+        if (maxY >= slotTop && minY <= slotBottom) {
+          const hits = slots
+            .filter((slot) => {
+              const left = timeToX(slot.start);
+              const right = timeToX(slot.end);
+              return right >= minX && left <= maxX;
+            })
+            .map((slot) => slot.id);
+          selectIds(hits, hits.length ? hits[hits.length - 1] : null);
+        } else {
+          clearSelection();
+        }
+        return nextState;
+      });
+      e.preventDefault();
+      return;
+    }
+
+    if (!isDragging || !dragMode || !dragStartSnapshot) return;
+
+    const snapshots = Array.isArray(dragStartSnapshot.slots)
+      ? dragStartSnapshot.slots
+      : [];
+    if (!snapshots.length) return;
+    const baseDuration = duration && duration > 0 ? duration : effectiveViewDuration;
+    const fallbackDuration = snapshots.reduce((max, item) => Math.max(max, item.end), 0);
+    const timelineDuration = baseDuration && baseDuration > 0 ? baseDuration : fallbackDuration;
+    if (timelineDuration <= 0) return;
+
+    if (dragMode === "move") {
+      const primary =
+        snapshots.find((snap) => snap.id === dragStartSnapshot.primaryId) || snapshots[0];
+      if (!primary) return;
+      const len = primary.end - primary.start;
+      const target = clamp(
+        xToTime(mouseX - dragOffset),
+        0,
+        Math.max(0, timelineDuration - len)
+      );
+      const desiredDelta = target - primary.start;
+      const minDelta = snapshots.reduce((acc, item) => Math.max(acc, -item.start), -Infinity);
+      const maxDelta = snapshots.reduce(
+        (acc, item) => Math.min(acc, timelineDuration - item.end),
+        Infinity
+      );
+      const allowedDelta = clamp(desiredDelta, minDelta, maxDelta);
+      if (!Number.isFinite(allowedDelta) || allowedDelta === 0) return;
+      const map = new Map(snapshots.map((snap) => [snap.id, snap]));
+      setSlots((prev) => {
+        const next = prev.map((slot) => {
+          const original = map.get(slot.id);
+          if (!original) return slot;
+          const lenSnap = original.end - original.start;
+          const start = snap(
+            clamp(original.start + allowedDelta, 0, Math.max(0, timelineDuration - lenSnap))
+          );
+          const end = snap(clamp(start + lenSnap, start + MIN_LEN, timelineDuration));
+          return { ...slot, start, end };
+        });
+        return next.sort((a, b) => a.start - b.start);
+      });
+      return;
+    }
+
+    const map = new Map(snapshots.map((snap) => [snap.id, snap]));
+    const primary = map.get(dragStartSnapshot.primaryId);
+    if (!primary) return;
+    const idx = slots.findIndex((s) => s.id === primary.id);
+    if (idx === -1) return;
+
+    setSlots((prev) => {
+      const next = [...prev];
+      const current = { ...next[idx] };
+      if (dragMode === "resize-l") {
+        const t = snap(clamp(xToTime(mouseX), 0, current.end - MIN_LEN));
+        current.start = clamp(t, 0, current.end - MIN_LEN);
+      } else if (dragMode === "resize-r") {
+        const t = snap(clamp(xToTime(mouseX), current.start + MIN_LEN, timelineDuration));
+        current.end = clamp(t, current.start + MIN_LEN, timelineDuration);
+      }
+      next[idx] = current;
+      return next.sort((a, b) => a.start - b.start);
+    });
   }
 
   function onMouseUp() {
+    if (marquee.active) {
+      setMarquee((prev) => ({ ...prev, active: false }));
+    }
     if (!isDragging) return;
     setIsDragging(false);
     setDragMode(null);
@@ -500,15 +689,15 @@ export default function AdminTimelinePanel({
   }
 
   function removeSelected() {
-    if (!selectedId) return;
-    setSlots((prev) => prev.filter((s) => s.id !== selectedId));
-    setSelectedId(null);
+    if (!selectedIds.length) return;
+    setSlots((prev) => prev.filter((s) => !selectionSet.has(s.id)));
+    clearSelection();
   }
 
   function updateSelected(patch) {
-    if (!selectedId) return;
+    if (!primarySelectedId) return;
     setSlots((prev) => {
-      const idx = prev.findIndex((s) => s.id === selectedId);
+      const idx = prev.findIndex((s) => s.id === primarySelectedId);
       if (idx === -1) return prev;
       const next = [...prev];
       next[idx] = { ...next[idx], ...patch };
@@ -655,20 +844,29 @@ export default function AdminTimelinePanel({
     return c;
   }
 
-  const selected = slots.find((s) => s.id === selectedId) || null;
+  const selected = slots.find((s) => s.id === primarySelectedId) || null;
   const formattedCurrent = secondsToTime(currentTime);
   const formattedDuration = secondsToTime(duration);
-  const selectedCastNames =
-    selected && Array.isArray(selected.cast) && selected.cast.length
-      ? selected.cast.join(" — ")
-      : "Cast seçilmedi";
-  const selectedSummary = selected
-    ? selected.label && selected.label.trim()
-      ? selected.label
-      : selected.kind
-      ? `Tür: ${selected.kind}`
-      : "Etiket ekleyin"
-    : "Slot seçilmedi";
+  const selectedCastNames = (() => {
+    if (selected && Array.isArray(selected.cast) && selected.cast.length) {
+      return selected.cast.join(" — ");
+    }
+    if (selectedIds.length > 1) {
+      return `${selectedIds.length} cast bloğu seçildi`;
+    }
+    return "Cast seçilmedi";
+  })();
+  const selectedSummary = (() => {
+    if (selectedIds.length > 1) {
+      return "Birden fazla slot seçildi";
+    }
+    if (selected) {
+      if (selected.label && selected.label.trim()) return selected.label;
+      if (selected.kind) return `Tür: ${selected.kind}`;
+      return "Etiket ekleyin";
+    }
+    return "Slot seçilmedi";
+  })();
   const panelClassName = ["timeline-panel", className].filter(Boolean).join(" ");
   const playheadX = clamp(timeToX(currentTime), 0, width);
   const trackStyle = {
@@ -706,7 +904,7 @@ export default function AdminTimelinePanel({
             type="button"
             className="timeline-action timeline-action--danger"
             onClick={removeSelected}
-            disabled={!selectedId}
+            disabled={!selectedIds.length}
           >
             Sil
           </button>
@@ -730,7 +928,6 @@ export default function AdminTimelinePanel({
         onMouseDown={onMouseDownBlank}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
-        onWheel={onTimelineWheel}
         onDragOver={onTimelineDragOver}
         onDrop={onTimelineDrop}
         onDragLeave={onTimelineDragLeave}
@@ -757,11 +954,23 @@ export default function AdminTimelinePanel({
           />
         )}
 
+        {marquee.active && (
+          <div
+            className="timeline-marquee"
+            style={{
+              left: Math.min(marquee.startX, marquee.currentX),
+              width: Math.max(0, Math.abs(marquee.currentX - marquee.startX)),
+              top: Math.min(marquee.startY, marquee.currentY),
+              height: Math.max(0, Math.abs(marquee.currentY - marquee.startY)),
+            }}
+          />
+        )}
+
         {slots.map((s) => (
           <SlotView
             key={s.id}
             slot={s}
-            selected={s.id === selectedId}
+            selected={selectionSet.has(s.id)}
             toX={timeToX}
             onMouseDown={onMouseDownSlot}
           />
@@ -820,7 +1029,7 @@ export default function AdminTimelinePanel({
               type="button"
               className="timeline-secondary-button"
               onClick={duplicateSelected}
-              disabled={!selectedId}
+              disabled={!primarySelectedId}
             >
               Kopyala
             </button>
@@ -845,7 +1054,7 @@ export default function AdminTimelinePanel({
       <div className="timeline-details-row">
         <div className="timeline-selection-panel">
           <div className="timeline-panel-heading">Seçili Slot</div>
-          {selected ? (
+          {selected && selectedIds.length === 1 ? (
             <div className="timeline-selection-fields">
               <FieldNumber
                 label="Başlangıç"
@@ -931,6 +1140,10 @@ export default function AdminTimelinePanel({
                   Sona Git
                 </button>
               </div>
+            </div>
+          ) : selectedIds.length > 1 ? (
+            <div className="timeline-selection-empty timeline-selection-multi">
+              {selectedIds.length} slot seçildi. Hepsini sürükleyerek taşıyabilir, düzenlemek için tek bir slot seçebilirsiniz.
             </div>
           ) : (
             <div className="timeline-selection-empty">

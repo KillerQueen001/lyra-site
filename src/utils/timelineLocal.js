@@ -193,3 +193,47 @@ function normalizeCastMeta(meta, fallbackName) {
     photo: meta.photo || null,
   };
 }
+
+export function buildCastListFromTimeline(videoId, fallbackCast = []) {
+  const entry = loadVideoTimeline(videoId);
+  if (!entry) return null;
+  const castByName = new Map();
+  for (const cast of entry.castLibrary || []) {
+    if (!cast || typeof cast !== "object") continue;
+    if (cast.name) castByName.set(cast.name, normalizeCastMeta(cast, cast.name));
+    if (cast.id) castByName.set(cast.id, normalizeCastMeta(cast, cast.name || cast.id));
+  }
+  const fallbackByName = new Map();
+  for (const cast of fallbackCast) {
+    if (!cast || typeof cast !== "object") continue;
+    fallbackByName.set(cast.name, normalizeCastMeta(cast, cast.name));
+    fallbackByName.set(cast.id, normalizeCastMeta(cast, cast.name || cast.id));
+  }
+  const aggregated = new Map();
+  for (const slot of entry.slots || []) {
+    if (!slot || typeof slot !== "object") continue;
+    if (!Array.isArray(slot.cast)) continue;
+    const start = Number(slot.start) || 0;
+    const end = Number(slot.end) || 0;
+    if (end <= start) continue;
+    for (const castName of slot.cast) {
+      if (!castName) continue;
+      const baseMeta =
+        castByName.get(castName) ||
+        fallbackByName.get(castName) ||
+        normalizeCastMeta(null, castName);
+      const key = baseMeta.id;
+      if (!aggregated.has(key)) {
+        aggregated.set(key, { ...baseMeta, slots: [] });
+      }
+      aggregated.get(key).slots.push({ start, end });
+    }
+  }
+
+  return {
+    items: Array.from(aggregated.values()),
+    castLibrary: entry.castLibrary || [],
+    slots: entry.slots || [],
+    updatedAt: entry.updatedAt || null,
+  };
+}
