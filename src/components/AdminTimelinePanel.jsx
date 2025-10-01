@@ -124,6 +124,28 @@ export default function AdminTimelinePanel({
   });
   const selectionSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
+  const videoEl = videoRef.current;
+  const duration =
+    videoEl && typeof videoEl.duration === "number" && !Number.isNaN(videoEl.duration)
+      ? videoEl.duration
+      : 0;
+  const currentTime =
+    videoEl && typeof videoEl.currentTime === "number" && !Number.isNaN(videoEl.currentTime)
+      ? videoEl.currentTime
+      : 0;
+
+    const effectiveViewDuration = useMemo(() => {
+    if (duration > 0) {
+      return viewDuration && viewDuration > 0 ? viewDuration : duration;
+    }
+    return viewDuration && viewDuration > 0 ? viewDuration : 1;
+  }, [duration, viewDuration]);
+
+  const pxPerSec = useMemo(
+    () => (effectiveViewDuration > 0 ? width / effectiveViewDuration : 0),
+    [width, effectiveViewDuration]
+  );
+
   const clearSelection = useCallback(() => {
     setSelectedIds((prev) => (prev.length ? [] : prev));
     setPrimarySelectedId(null);
@@ -156,14 +178,6 @@ export default function AdminTimelinePanel({
     currentX: 0,
     meta: null,
   });
-
-  const videoEl = videoRef.current;
-  const duration = videoEl && typeof videoEl.duration === "number" && !Number.isNaN(videoEl.duration)
-    ? videoEl.duration
-    : 0;
-  const currentTime = videoEl && typeof videoEl.currentTime === "number" && !Number.isNaN(videoEl.currentTime)
-    ? videoEl.currentTime
-    : 0;
 
   // Bulk import UI
   const [importOpen, setImportOpen] = useState(false);
@@ -276,18 +290,6 @@ export default function AdminTimelinePanel({
     selectionSet,
     clearSelection,
   ]);
-
-  const effectiveViewDuration = useMemo(() => {
-    if (duration > 0) {
-      return viewDuration && viewDuration > 0 ? viewDuration : duration;
-    }
-    return viewDuration && viewDuration > 0 ? viewDuration : 1;
-  }, [duration, viewDuration]);
-
-  const pxPerSec = useMemo(
-    () => (effectiveViewDuration > 0 ? width / effectiveViewDuration : 0),
-    [width, effectiveViewDuration]
-  );
 
   function timeToX(t) {
     return (t - viewStart) * pxPerSec;

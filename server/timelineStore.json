@@ -1,3 +1,104 @@
 {
-  "videos": {}
+  "videos": {
+    "portal2-bolum-1": {
+      "slots": [
+        {
+          "id": "7jarwd1i",
+          "start": 0,
+          "end": 2,
+          "label": "",
+          "cast": [],
+          "color": "#ff8fa3",
+          "kind": "dialogue"
+        },
+        {
+          "id": "ihpqco72",
+          "start": 0,
+          "end": 2,
+          "label": "",
+          "cast": [],
+          "color": "#5ad1b3",
+          "kind": "dialogue"
+        },
+        {
+          "id": "klk06jc7",
+          "start": 0,
+          "end": 2,
+          "label": "",
+          "cast": [],
+          "color": "#ffd166",
+          "kind": "dialogue"
+        },
+        {
+          "id": "zvemrfd1",
+          "start": 2.3000000000000003,
+          "end": 10.850000000000001,
+          "label": "Ayşe G.",
+          "cast": [
+            "Ayşe G."
+          ],
+          "color": "#b598ff"
+        }
+      ],
+      "castLibrary": [
+        {
+          "id": "ayse",
+          "name": "Ayşe G.",
+          "description": "Sıcak ve samimi anlatım tonuyla girişleri taşır.",
+          "role": "Anlatıcı",
+          "photo": null
+        },
+        {
+          "id": "mert",
+          "name": "Mert K.",
+          "description": "Enerjik sahnelere tempo katan erkek sesi.",
+          "role": "Enerjik erkek",
+          "photo": null
+        },
+        {
+          "id": "hannah",
+          "name": "Hannah L.",
+          "description": "Genç karakterler için yumuşak ton.",
+          "role": "Genç kadın",
+          "photo": null
+        },
+        {
+          "id": "ali",
+          "name": "Ali R.",
+          "description": "Fragmanlarda derin bas tonuyla öne çıkar.",
+          "role": "Tanıtım sesi",
+          "photo": null
+        },
+        {
+          "id": "1",
+          "name": "Abdullah Taha Can",
+          "description": "Kieru Kamiya",
+          "role": "Kieru Kamiya",
+          "photo": "/xray/abdullahtahacan.jpg"
+        },
+        {
+          "id": "2",
+          "name": "Nisa Nur Dikmen",
+          "description": "Sarina Hawthrone",
+          "role": "Sarina Hawthrone",
+          "photo": "/xray/nisanurdikmen.jpg"
+        },
+        {
+          "id": "3",
+          "name": "Ege Pehlivanoğlu",
+          "description": "Reyk",
+          "role": "Reyk",
+          "photo": "/xray/egepehlivanoglu.jpg"
+        },
+        {
+          "id": "4",
+          "name": "Cihan Çakmak",
+          "description": "Maobo",
+          "role": "Maobo",
+          "photo": "/xray/cihancakmak.jpg"
+        }
+      ],
+      "updatedAt": "2025-10-01T10:45:55.753Z"
+    }
+  }
 }
