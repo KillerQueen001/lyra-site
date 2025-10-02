@@ -32,7 +32,7 @@ export default function Home() {
               {featured.map((video) => (
                 <Link
                   key={video.id}
-                  to={`/videos/${encodeURIComponent(video.id)}`}
+                  to={`/watch/${encodeURIComponent(video.id)}`}
                   className="home-video-card"
                 >
                   <div className="home-video-thumb">

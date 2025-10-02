@@ -1,23 +1,36 @@
 import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVideoCatalog } from "../hooks/useVideoCatalog";
-import { getAgeRatingLabel } from "../utils/videoCatalog";
+import {
+  getAgeRatingLabel,
+  resolveVideoSourceForCatalogEntry,
+} from "../utils/videoCatalog";
 import "./Videos.css";
 
 export default function Videos() {
   const { catalog, isLoading } = useVideoCatalog();
 
+  const spotlight = useMemo(() => catalog.slice(0, 1)[0] || null, [catalog]);
+  const rest = useMemo(() => (spotlight ? catalog.slice(1) : catalog), [
+    catalog,
+    spotlight,
+  ]);
+
   return (
     <div className="videos-page">
+      <div className="videos-noise" aria-hidden="true" />
       <header className="videos-header">
-        <div>
+        <div className="videos-header-meta">
+          <span className="videos-kicker">Stüdyo Kataloğu</span>
           <h1>Video Arşivi</h1>
           <p>
-            Stüdyomuzda hazırlanan tüm videoları burada keşfedebilir, detaylarına
-            ulaşabilir ve izlemeye başlayabilirsiniz.
+            Özenle hazırladığımız prodüksiyonları inceleyin, öne çıkan
+            yapımlarımıza göz atın ve yeni içerikleri keşfetmeye başlayın.
           </p>
         </div>
         <div className="videos-count" aria-live="polite">
-          {isLoading ? "Yükleniyor..." : `${catalog.length} video`}
+          {isLoading ? "Yükleniyor..." : `${catalog.length} içerik`}
+          <span>güncel arşiv</span>
         </div>
       </header>
 
@@ -35,43 +48,133 @@ export default function Videos() {
           </p>
         </div>
       ) : (
-        <div className="videos-grid" role="list">
-          {catalog.map((video) => (
-            <Link
-              key={video.id}
-              to={`/videos/${encodeURIComponent(video.id)}`}
-              className="videos-card"
-              role="listitem"
-            >
-              <div className="videos-card-thumb">
-                {video.thumbnail.src ? (
-                  <img
-                    src={video.thumbnail.src}
-                    alt={`${video.title} için kapak görseli`}
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="videos-card-thumb-fallback" aria-hidden="true">
-                    <span>Kapak yok</span>
-                  </div>
-                )}
-                <span className="videos-card-badge">
-                  {getAgeRatingLabel(video.ageRating)}
-                </span>
-              </div>
-              <div className="videos-card-body">
-                <h2>{video.title}</h2>
-                <p>{video.description || "Bu video için açıklama eklenmemiş."}</p>
-                {video.updatedAt ? (
-                  <span className="videos-card-meta">
-                    Güncellendi: {new Date(video.updatedAt).toLocaleDateString("tr-TR")}
-                  </span>
-                ) : null}
-              </div>
-            </Link>
-          ))}
-        </div>
+        <>
+          {spotlight ? (
+            <section className="videos-spotlight" aria-label="Öne çıkan video">
+              <VideoCard video={spotlight} spotlight />
+            </section>
+          ) : null}
+          <div className="videos-grid" role="list">
+            {rest.map((video, index) => (
+              <VideoCard key={video.id} video={video} index={index} />
+            ))}
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+function VideoCard({ video, spotlight = false, index = 0 }) {
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const previewTimer = useRef(null);
+  const videoRef = useRef(null);
+
+  const previewSrc = useMemo(
+    () => resolveVideoSourceForCatalogEntry(video),
+    [video]
+  );
+
+  const handlePointerEnter = useCallback(() => {
+    window.clearTimeout(previewTimer.current);
+    setIsHovering(true);
+    previewTimer.current = window.setTimeout(() => {
+      setIsPreviewing(true);
+    }, 3000);
+  }, []);
+
+  const cancelPreview = useCallback(() => {
+    setIsHovering(false);
+    window.clearTimeout(previewTimer.current);
+    previewTimer.current = null;
+    setIsPreviewing(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(previewTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isPreviewing) {
+      videoRef.current.play().catch(() => {});
+    } else {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, [isPreviewing]);
+
+  return (
+    <Link
+      to={`/watch/${encodeURIComponent(video.id)}`}
+      className={`videos-card${spotlight ? " videos-card-spotlight" : ""}`}
+      role={spotlight ? undefined : "listitem"}
+      onMouseEnter={handlePointerEnter}
+      onMouseLeave={cancelPreview}
+      onFocus={handlePointerEnter}
+      onBlur={cancelPreview}
+      style={{
+        animationDelay: !spotlight ? `${Math.min(index, 6) * 80}ms` : undefined,
+      }}
+    >
+      <div className="videos-card-media">
+        <div className="videos-card-thumb">
+          {video.thumbnail.src ? (
+            <img
+              src={video.thumbnail.src}
+              alt={`${video.title} için kapak görseli`}
+              loading="lazy"
+            />
+          ) : (
+            <div className="videos-card-thumb-fallback" aria-hidden="true">
+              <span>Kapak yok</span>
+            </div>
+          )}
+          <span className="videos-card-badge">
+            {getAgeRatingLabel(video.ageRating)}
+          </span>
+        </div>
+
+        <video
+          ref={videoRef}
+          className={`videos-card-preview${
+            isPreviewing ? " is-visible" : ""
+          }`}
+          src={previewSrc}
+          muted
+          playsInline
+          loop
+        />
+
+        <div className="videos-card-glow" aria-hidden="true" />
+        <div className="videos-card-hover-hint" aria-hidden="true">
+          {isHovering && !isPreviewing ? "Ön izleme hazırlanıyor..." : ""}
+        </div>
+      </div>
+      <div className="videos-card-body">
+        <div className="videos-card-title">
+          {spotlight ? <span className="videos-card-pill">Spotlight</span> : null}
+          <h2>{video.title}</h2>
+        </div>
+        <p>{video.description || "Bu video için açıklama eklenmemiş."}</p>
+        <div className="videos-card-meta">
+          <span>{video.ageRatingLabel}</span>
+          {video.updatedAt ? (
+            <span>
+              Güncellendi: {new Date(video.updatedAt).toLocaleDateString("tr-TR")}
+            </span>
+          ) : (
+            <span>Yayınlanma: {video.base?.published || "-"}</span>
+          )}
+        </div>
+      </div>
+    </Link>
   );
 }

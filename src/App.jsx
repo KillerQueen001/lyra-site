@@ -11,7 +11,6 @@ import Home from "./pages/Home";
 import Groups from "./pages/Groups";
 import GroupDetail from "./pages/GroupDetail";
 import Videos from "./pages/Videos";
-import VideoDetail from "./pages/VideoDetail";
 import Cast from "./pages/Cast";
 import CastDetail from "./pages/CastDetail";
 import Apply from "./pages/Apply";
@@ -55,7 +54,6 @@ export default function App() {
         <Route path="/groups" element={<Groups />} />
         <Route path="/groups/:slug" element={<GroupDetail />} />
         <Route path="/videos" element={<Videos />} />
-        <Route path="/videos/:id" element={<VideoDetail />} />
         <Route path="/cast" element={<Cast />} />
         <Route path="/cast/:username" element={<CastDetail />} />
         <Route path="/apply" element={<Apply />} />
