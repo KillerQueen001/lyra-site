@@ -303,6 +303,14 @@ export default function AdminTimelinePanel({
     videoRef.current.currentTime = clamp(t, 0, duration || 0);
   }
 
+    function onTrackDoubleClick(e) {
+    const timelineEl = timelineRef.current;
+    if (!timelineEl) return;
+    const rect = timelineEl.getBoundingClientRect();
+    const mouseX = clamp(e.clientX - rect.left, 0, width);
+    seek(xToTime(mouseX));
+  }
+
   const onTimelineWheel = useCallback(
     (e) => {
       if (width <= 0) return;
@@ -930,6 +938,7 @@ export default function AdminTimelinePanel({
         onMouseDown={onMouseDownBlank}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
+        onDoubleClick={onTrackDoubleClick}
         onDragOver={onTimelineDragOver}
         onDrop={onTimelineDrop}
         onDragLeave={onTimelineDragLeave}
@@ -978,7 +987,7 @@ export default function AdminTimelinePanel({
           />
         ))}
 
-        <Playhead x={playheadX} onSeek={seek} xToTime={xToTime} />
+        <Playhead x={playheadX} />
       </div>
 
       <div className="timeline-secondary-row">
@@ -1301,15 +1310,10 @@ function SlotView({ slot, selected, toX, onMouseDown }) {
   );
 }
 
-function Playhead({ x, onSeek, xToTime }) {
+function Playhead({ x }) {
   return (
     <div
       className="timeline-playhead"
-      onDoubleClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        onSeek(xToTime(mouseX));
-      }}
     >
       <div className="timeline-playhead-line" style={{ transform: `translateX(${x}px)` }} />
       <div className="timeline-playhead-cap" style={{ transform: `translateX(${x}px)` }} />

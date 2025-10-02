@@ -268,7 +268,7 @@
 .timeline-playhead {
   position: absolute;
   inset: 0;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .timeline-playhead-line {
