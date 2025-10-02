@@ -1,31 +1,4 @@
-const DEFAULT_BASE_URL =
-  (typeof window !== "undefined" &&
-    `${window.location.protocol}//${window.location.hostname}:4173/api`)
-    || "http://localhost:4173/api";
-
-function resolveBaseUrl() {
-  let envUrl;
-  try {
-    if (typeof import.meta !== "undefined" && import.meta.env) {
-      envUrl = import.meta.env.VITE_TIMELINE_API_BASE;
-    }
-  } catch {
-    envUrl = undefined;
-  }
-  if (typeof envUrl === "string" && envUrl.trim().length > 0) {
-    return envUrl.replace(/\/$/, "");
-  }
-  return DEFAULT_BASE_URL;
-}
-
-const API_BASE = resolveBaseUrl();
-
-function buildUrl(path) {
-  if (!API_BASE) return null;
-  const base = API_BASE.replace(/\/$/, "");
-  const safePath = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${safePath}`;
-}
+import { buildApiUrl } from "./apiClient";
 
 function sanitizeTimelinePayload(payload = {}) {
   const slots = Array.isArray(payload.slots) ? payload.slots : [];
@@ -38,7 +11,7 @@ function sanitizeTimelinePayload(payload = {}) {
 
 export async function fetchTimelineFromFile(videoId) {
   if (!videoId) return null;
-  const url = buildUrl(`/timelines/${encodeURIComponent(videoId)}`);
+  const url = buildApiUrl(`/timelines/${encodeURIComponent(videoId)}`);
   if (!url || typeof fetch === "undefined") return null;
   try {
     const response = await fetch(url, {
@@ -56,7 +29,7 @@ export async function fetchTimelineFromFile(videoId) {
 }
 
 export async function listTimelinesFromFile() {
-  const url = buildUrl("/timelines");
+  const url = buildApiUrl("/timelines");
   if (!url || typeof fetch === "undefined") return null;
   try {
     const response = await fetch(url, {
@@ -119,7 +92,7 @@ function triggerDownload(videoId, payload) {
 
 export async function persistTimelineToFile(videoId, payload) {
   if (!videoId) return { ok: false };
-  const url = buildUrl(`/timelines/${encodeURIComponent(videoId)}`);
+  const url = buildApiUrl(`/timelines/${encodeURIComponent(videoId)}`);
   const sanitized = sanitizeTimelinePayload(payload);
   if (!url || typeof fetch === "undefined") {
     const downloaded = triggerDownload(videoId, sanitized);

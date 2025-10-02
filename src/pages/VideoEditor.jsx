@@ -1,96 +1,99 @@
-import { useMemo, useRef, useState } from "react";
-import AdminTimelinePanel from "../components/AdminTimelinePanel";
+import { useRef, useState } from "react";
 import "./VideoEditor.css";
 
-const VOICE_LIBRARY = [
-  {
-    id: "ayse",
-    name: "Ayşe G.",
-    description: "Sıcak ve samimi bir ton ile anlatım yapan ana spiker.",
-  },
-  {
-    id: "mert",
-    name: "Mert K.",
-    description: "Hareketli sahnelerde enerjik performansıyla öne çıkan erkek ses.",
-  },
-  {
-    id: "hannah",
-    name: "Hannah L.",
-    description: "Yumuşak vurgularla genç karakterleri seslendirmede uzman.",
-  },
-  {
-    id: "ali",
-    name: "Ali R.",
-    description: "Derin bas tonu ile fragman ve duyuru metinlerine güç katar.",
-  },
-];
-
-const INITIAL_TIMELINE = [
-  {
-    id: "intro",
-    start: 0,
-    end: 4,
-    label: "Açılış",
-    cast: [VOICE_LIBRARY[0].name],
-    kind: "dialogue",
-  },
+const AGE_RATINGS = [
+  { value: "all", label: "Genel İzleyici" },
+  { value: "7", label: "+7" },
+  { value: "13", label: "+13" },
+  { value: "16", label: "+16" },
+  { value: "18", label: "+18" },
 ];
 
 export default function VideoEditor() {
   const videoRef = useRef(null);
+  const thumbnailInputRef = useRef(null);
   const [title, setTitle] = useState("Yeni Video");
   const [description, setDescription] = useState(
-    "Sahne sahne açıklamanızı buraya yazın."
+    "Videonuz için açıklamayı buraya yazın."
   );
-  const [timelineSlots, setTimelineSlots] = useState(INITIAL_TIMELINE);
+  const [ageRating, setAgeRating] = useState("all");
+  const [thumbnailPreview, setThumbnailPreview] = useState("");
+  const [thumbnailName, setThumbnailName] = useState("");
+  const [thumbnailError, setThumbnailError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState(null);
-  const [activeVoiceId, setActiveVoiceId] = useState(VOICE_LIBRARY[0].id);
+  const [statusMessage, setStatusMessage] = useState("");
 
-  const castPalette = useMemo(
-    () => VOICE_LIBRARY.map((voice) => voice.name),
-    []
-  );
-
-  const activeVoice = useMemo(
-    () => VOICE_LIBRARY.find((voice) => voice.id === activeVoiceId) ?? VOICE_LIBRARY[0],
-    [activeVoiceId]
-  );
-
-  const handleTimelineSave = (slots) => {
-    setTimelineSlots(slots);
-    setLastSavedAt(new Date());
+  const handleThumbnailChange = (event) => {
+    const file = event.target.files && event.target.files[0];
+    setThumbnailError("");
+    if (!file) {
+      setThumbnailPreview("");
+      setThumbnailName("");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setThumbnailError("Lütfen bir görsel dosyası seçin.");
+      setThumbnailPreview("");
+      setThumbnailName("");
+      return;
+    }
+    setThumbnailName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setThumbnailPreview(reader.result);
+      }
+    };
+    reader.onerror = () => {
+      setThumbnailError("Thumbnail yüklenirken bir hata oluştu.");
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleVoiceDragStart = (event, voice) => {
-    event.dataTransfer.setData(
-      "application/x-slot",
-      JSON.stringify({ cast: voice.name })
+  const handleSave = () => {
+    const timestamp = new Date();
+    setLastSavedAt(timestamp);
+    setStatusMessage(
+      `Kaydedildi: ${timestamp.toLocaleTimeString("tr-TR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`
     );
-    event.dataTransfer.effectAllowed = "copy";
+    setTimeout(() => {
+      setStatusMessage("");
+    }, 4000);
+  };
+
+  const handleReset = () => {
+    setTitle("Yeni Video");
+    setDescription("Videonuz için açıklamayı buraya yazın.");
+    setAgeRating("all");
+    setThumbnailPreview("");
+    setThumbnailName("");
+    setThumbnailError("");
+    setStatusMessage("");
+    setLastSavedAt(null);
+    if (thumbnailInputRef.current) {
+      thumbnailInputRef.current.value = "";
+    }
   };
 
   return (
     <div className="video-editor-page">
       <div className="video-editor-shell">
         <header className="video-editor-header">
-          <div>
-            <h1>Video Düzenleyici</h1>
-            <p>
-              Sağdaki listeden seslendirenleri seçin, timeline üzerine sürükleyin ve
-              sahnelerinizi düzenleyin.
-            </p>
-          </div>
+          <h1>Video Düzenleyici</h1>
+          <p>
+            Başlığı, açıklamayı, kapak görselini ve yaş kısıtlamasını düzenleyin.
+            Yapılan değişiklikleri kaydedin veya sıfırlayın.
+          </p>
         </header>
 
         <div className="video-editor-grid">
           <section className="editor-main">
             <div className="video-stage">
               <div className="video-frame">
-                <video
-                  ref={videoRef}
-                  controls
-                  preload="metadata"
-                >
+                <video ref={videoRef} controls preload="metadata">
                   <source src="/videos/sample.mp4" type="video/mp4" />
                   Tarayıcınız video etiketini desteklemiyor.
                 </video>
@@ -109,105 +112,83 @@ export default function VideoEditor() {
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Videoda neler oluyor?"
+                    placeholder="Videonun içeriğini açıklayın"
                   />
                 </label>
               </div>
             </div>
 
-            <div className="timeline-panel">
-              <div className="timeline-header">
-                <div>
-                  <h2>Timeline</h2>
-                  <p>
-                    Kişileri aşağıdaki çubuğa sürükleyin, blokları uzatarak veya
-                    taşıyarak ayarlayın.
-                  </p>
-                </div>
-                <div className="timeline-meta">
-                  <span>{timelineSlots.length} kayıt</span>
-                  {lastSavedAt && (
-                    <span>
-                      Son kaydedilen: {lastSavedAt.toLocaleTimeString("tr-TR")}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <AdminTimelinePanel
-                videoRef={videoRef}
-                initialSlots={timelineSlots}
-                castPalette={castPalette}
-                onSave={handleTimelineSave}
-                className="timeline-component"
-              />
-            </div>
-          </section>
-
-          <aside className="editor-sidebar">
-            <div className="voice-library">
-              <div className="voice-library__header">
-                <h2>Seslendiren Seçin</h2>
+            <div className="metadata-panel">
+              <div className="metadata-header">
+                <h2>Video Ayarları</h2>
                 <p>
-                  Her kartı sürükleyip timeline&apos;a bırakın. Seçerek açıklamasını
-                  görün.
+                  Thumbnail ekleyin ve yaş kısıtlamasını belirleyin. Kaydetmeden önce
+                  bilgilerinizi kontrol edin.
                 </p>
               </div>
-              <ul className="voice-library__list">
-                {VOICE_LIBRARY.map((voice) => (
-                  <li key={voice.id}>
-                    <button
-                      type="button"
-                      className={`voice-card${
-                        voice.id === activeVoiceId ? " voice-card--active" : ""
-                      }`}
-                      onClick={() => setActiveVoiceId(voice.id)}
-                      draggable
-                      onDragStart={(event) => handleVoiceDragStart(event, voice)}
-                    >
-                      <div className="voice-card__avatar" aria-hidden>
-                        {voice.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")}
-                      </div>
-                      <div className="voice-card__body">
-                        <div className="voice-card__name">{voice.name}</div>
-                        <div className="voice-card__desc">{voice.description}</div>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button type="button" className="voice-library__new">
-                Yeni seslendirmen ekleyin
-              </button>
-            </div>
-
-            <div className="voice-detail">
-              <h3>Seçili seslendiren</h3>
-              <div className="voice-detail__card">
-                <div className="voice-detail__initials" aria-hidden>
-                  {activeVoice.name
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")}
-                </div>
-                <div>
-                  <div className="voice-detail__name">{activeVoice.name}</div>
-                  <p className="voice-detail__description">
-                    {activeVoice.description}
-                  </p>
-                </div>
+              <div className="metadata-grid">
+                <label className="metadata-thumbnail">
+                  <span>Thumbnail</span>
+                  <input
+                    ref={thumbnailInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleThumbnailChange}
+                  />
+                  {thumbnailError ? (
+                    <p className="metadata-hint metadata-hint--error">{thumbnailError}</p>
+                  ) : (
+                    <p className="metadata-hint">
+                      JPG veya PNG formatında bir görsel yükleyebilirsiniz.
+                    </p>
+                  )}
+                  {thumbnailPreview && (
+                    <div className="thumbnail-preview">
+                      <img src={thumbnailPreview} alt="Seçili thumbnail" />
+                      {thumbnailName && (
+                        <span className="thumbnail-name">{thumbnailName}</span>
+                      )}
+                    </div>
+                  )}
+                </label>
+                <label>
+                  <span>Yaş kısıtlaması</span>
+                  <select
+                    value={ageRating}
+                    onChange={(event) => setAgeRating(event.target.value)}
+                  >
+                    {AGE_RATINGS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <div className="voice-detail__hint">
-                Timeline&apos;a sürüklediğiniz blokların üzerine tıklayarak süreyi
-                düzenleyebilirsiniz.
+              <div className="metadata-actions">
+                <button type="button" onClick={handleSave}>
+                  Kaydet
+                </button>
+                <button type="button" className="metadata-secondary" onClick={handleReset}>
+                  Sıfırla
+                </button>
+              </div>
+              <div className="metadata-status">
+                {statusMessage && <span>{statusMessage}</span>}
+                {lastSavedAt && !statusMessage && (
+                  <span>
+                    Son kaydetme: {lastSavedAt.toLocaleTimeString("tr-TR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
+                <span>Seçili yaş kısıtlaması: {AGE_RATINGS.find((x) => x.value === ageRating)?.label}</span>
               </div>
             </div>
-          </aside>
+          </section>
         </div>
       </div>
     </div>
   );
 }
-
