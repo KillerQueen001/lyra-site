@@ -18,10 +18,10 @@ const PORT = Number(
     4173
 );
 
-const DEFAULT_STORE = { videos: {}, casts: [] };
+const DEFAULT_STORE = { videos: {}, casts: [], videoLibrary: {} };
 
 function cloneDefaultStore() {
-  return { videos: {}, casts: [] };
+  return { videos: {}, casts: [], videoLibrary: {} };
 }
 
 async function ensureStoreFile() {
@@ -163,6 +163,141 @@ function createCastEntry(payload = {}, existing = []) {
     updatedAt: timestamp,
   };
 }
+const HLS_URL_RE = /\.m3u8(\?.*)?$/i;
+
+function normalizeVideoFiles(files = {}) {
+  const normalized = {};
+  if (!files || typeof files !== "object") return normalized;
+  Object.entries(files).forEach(([key, value]) => {
+    const k = safeString(key);
+    const v = safeString(value);
+    if (!k || !v) return;
+    normalized[k] = v;
+  });
+  return normalized;
+}
+
+function normalizeVideoLibraryEntry(id, entry = {}) {
+  const baseTitle = safeString(entry.title) || safeString(entry.name) || id;
+  const description = safeString(entry.description);
+  const stream = safeString(entry.stream);
+  const url = safeString(entry.url);
+  const poster = safeString(entry.poster || entry.thumbnail);
+  const defaultQuality = safeString(entry.defaultQuality);
+  const createdAt = safeString(entry.createdAt);
+  const updatedAt = safeString(entry.updatedAt);
+  const origin = safeString(entry.origin) || "remote";
+  const files = normalizeVideoFiles(entry.files);
+  const payload = { title: baseTitle || id, origin };
+  if (description) payload.description = description;
+  if (stream) payload.stream = stream;
+  if (url) payload.url = url;
+  if (poster) payload.poster = poster;
+  if (defaultQuality) payload.defaultQuality = defaultQuality;
+  if (Object.keys(files).length) payload.files = files;
+  if (createdAt) payload.createdAt = createdAt;
+  if (updatedAt) payload.updatedAt = updatedAt;
+  return payload;
+}
+
+function sanitizeVideoLibraryMap(map = {}) {
+  const sanitized = {};
+  Object.entries(map || {}).forEach(([videoId, entry]) => {
+    const id = safeString(videoId);
+    if (!id) return;
+    sanitized[id] = normalizeVideoLibraryEntry(id, entry);
+  });
+  return sanitized;
+}
+
+function listVideoLibraryEntries(map = {}) {
+  const list = [];
+  Object.entries(map || {}).forEach(([videoId, entry]) => {
+    const id = safeString(videoId);
+    if (!id) return;
+    list.push({ id, ...normalizeVideoLibraryEntry(id, entry) });
+  });
+  return list;
+}
+
+function createVideoLibraryEntry(payload = {}, existingMap = {}) {
+  const title = safeString(payload.title);
+  const stream = safeString(payload.stream);
+  if (!stream) {
+    const error = new Error("HLS bağlantısı gereklidir");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!HLS_URL_RE.test(stream)) {
+    const error = new Error("HLS bağlantısı .m3u8 ile bitmelidir");
+    error.statusCode = 400;
+    throw error;
+  }
+  const requestedId = safeString(payload.id);
+  const streamSegment = stream.split("?")[0];
+  const streamName = (streamSegment.split("/").pop() || streamSegment || "").trim();
+  let id = requestedId || slugify(title) || slugify(streamName);
+  if (!id) {
+    id = `video-${Date.now().toString(36)}`;
+  }
+  if (existingMap[id]) {
+    const error = new Error("Bu video ID'si zaten kayıtlı");
+    error.statusCode = 409;
+    throw error;
+  }
+  const description = safeString(payload.description);
+  const poster = safeString(payload.poster);
+  const url = safeString(payload.url);
+  const defaultQuality = safeString(payload.defaultQuality);
+  const files = normalizeVideoFiles(payload.files);
+  const timestamp = new Date().toISOString();
+  const entry = normalizeVideoLibraryEntry(id, {
+    title: title || id,
+    description,
+    stream,
+    poster,
+    url,
+    defaultQuality,
+    files,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    origin: "remote",
+  });
+  return { id, entry };
+}
+
+function safeAgeRating(value) {
+  const allowed = new Set(["all", "7", "13", "16", "18"]);
+  const normalized = safeString(value).toLowerCase();
+  if (!normalized) return "all";
+  if (normalized === "genel" || normalized === "genel izleyici") {
+    return "all";
+  }
+  return allowed.has(normalized) ? normalized : "all";
+}
+
+function normalizeVideoDetailsEntry(entry = {}) {
+  const base = typeof entry === "object" && entry !== null ? entry : {};
+  const title = safeString(base.title) || "Yeni Video";
+  const description = safeString(base.description) || "";
+  const ageRating = safeAgeRating(base.ageRating);
+  let thumbnail = { src: "", name: "" };
+  if (base.thumbnail && typeof base.thumbnail === "object") {
+    thumbnail = {
+      src: safeString(base.thumbnail.src),
+      name: safeString(base.thumbnail.name),
+    };
+  } else if (typeof base.thumbnail === "string") {
+    thumbnail = { src: safeString(base.thumbnail), name: "" };
+  }
+  return {
+    title,
+    description,
+    ageRating,
+    thumbnail,
+    updatedAt: safeString(base.updatedAt) || new Date().toISOString(),
+  };
+}
 
 async function readStore() {
   await ensureStoreFile();
@@ -179,7 +314,15 @@ async function readStore() {
     for (const entry of castsRaw) {
       casts.push(normalizeCastEntry(entry, casts));
     }
-    return { videos, casts };
+    const videoDetailsRaw =
+      parsed.videoDetails && typeof parsed.videoDetails === "object"
+        ? parsed.videoDetails
+        : {};
+    const videoDetails = {};
+    for (const [videoId, entry] of Object.entries(videoDetailsRaw)) {
+      videoDetails[videoId] = normalizeVideoDetailsEntry(entry);
+    }
+    return { videos, casts, videoDetails };
   } catch (error) {
     console.warn("timelineStore JSON parse failed, resetting file", error);
     await writeFile(DATA_PATH, JSON.stringify(DEFAULT_STORE, null, 2), "utf8");
@@ -197,9 +340,17 @@ async function writeStore(store) {
   for (const entry of source) {
     casts.push(normalizeCastEntry(entry, casts));
   }
+  const videoDetails = {};
+  const detailsSource =
+    store && store.videoDetails && typeof store.videoDetails === "object"
+      ? store.videoDetails
+      : {};
+  for (const [videoId, entry] of Object.entries(detailsSource)) {
+    videoDetails[videoId] = normalizeVideoDetailsEntry(entry);
+  }
   await writeFile(
     DATA_PATH,
-    JSON.stringify({ videos, casts }, null, 2),
+    JSON.stringify({ videos, casts, videoDetails }, null, 2),
     "utf8"
   );
 }
@@ -264,6 +415,7 @@ const server = createServer(async (req, res) => {
           const updatedStore = {
             videos: store.videos,
             casts: [...store.casts, newCast],
+            videoDetails: store.videoDetails,
           };
           await writeStore(updatedStore);
           sendJson(res, 201, newCast);
@@ -275,6 +427,64 @@ const server = createServer(async (req, res) => {
               ? error.message || "Geçersiz cast verisi"
               : "Cast could not be saved";
           sendJson(res, status, { error: message });
+        }
+      });
+      return;
+    }
+
+    methodNotAllowed(res);
+    return;
+  }
+
+  if (url.pathname === "/api/video-details") {
+    if (req.method === "GET") {
+      const store = await readStore();
+      sendJson(res, 200, { videos: store.videoDetails });
+      return;
+    }
+
+    methodNotAllowed(res);
+    return;
+  }
+
+  const videoDetailsMatch = url.pathname.match(/^\/api\/video-details\/(.+)$/);
+  if (videoDetailsMatch) {
+    const videoId = decodeURIComponent(videoDetailsMatch[1]);
+    if (!videoId) {
+      notFound(res);
+      return;
+    }
+
+    if (req.method === "GET") {
+      const store = await readStore();
+      const entry = store.videoDetails[videoId];
+      if (!entry) {
+        notFound(res);
+        return;
+      }
+      sendJson(res, 200, normalizeVideoDetailsEntry(entry));
+      return;
+    }
+
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", async () => {
+        try {
+          const payload = body.length ? JSON.parse(body) : {};
+          const store = await readStore();
+          const normalized = normalizeVideoDetailsEntry({
+            ...payload,
+            updatedAt: new Date().toISOString(),
+          });
+          store.videoDetails[videoId] = normalized;
+          await writeStore(store);
+          sendJson(res, 200, normalized);
+        } catch (error) {
+          console.error("Video detayları kaydedilemedi", error);
+          sendJson(res, 500, { error: "Video details could not be saved" });
         }
       });
       return;
