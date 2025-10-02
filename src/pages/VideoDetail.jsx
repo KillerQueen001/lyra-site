@@ -1,91 +1,70 @@
 import { Link, useParams } from "react-router-dom";
+import { useMemo } from "react";
+import { useVideoCatalog } from "../hooks/useVideoCatalog";
+import { getAgeRatingLabel, resolveVideoSourceForCatalogEntry } from "../utils/videoCatalog";
 import "./VideoDetail.css";
-
-const videos = {
-  1: {
-    title: "Lyra Video 1",
-    src: "/sample.mp4",
-    description:
-      "Lyra Records stüdyosunda kaydedilen bu özel performans, grubun albüm hazırlık sürecine dair samimi bir pencere aralıyor.",
-    episode: "Bölüm 1",
-    duration: "24:16",
-    releaseDate: "12 Şubat 2024",
-    views: "12.4K",
-    tags: ["Stüdyo", "Performans"],
-    badge: "Yeni"
-  },
-  2: {
-    title: "Lyra Video 2",
-    src: "/sample.mp4",
-    description:
-      "Grubun dünya turnesi hazırlıkları ve sahne arkası görüntülerinden oluşan bu bölümde, Lyra Records ekibinin dinamizmini izleyin.",
-    episode: "Bölüm 2",
-    duration: "19:05",
-    releaseDate: "26 Şubat 2024",
-    views: "9.1K",
-    tags: ["Turne", "Vlog"],
-    badge: "Popüler"
-  },
-  3: {
-    title: "Lyra Video 3",
-    src: "/sample.mp4",
-    description:
-      "Akustik düzenlemelerin anlatıldığı bu kayıt, şarkıların sade halleriyle buluşmamızı sağlıyor ve hikâyelerini yeniden keşfetmemizi sağlıyor.",
-    episode: "Bölüm 3",
-    duration: "28:42",
-    releaseDate: "4 Mart 2024",
-    views: "7.6K",
-    tags: ["Akustik", "Atölye"],
-    badge: "Öne Çıkan"
-  },
-  4: {
-    title: "Lyra Video 4",
-    src: "/sample.mp4",
-    description:
-      "Lyra Records sanatçılarının ortak jamming seansından kesitler ve prodüksiyon sürecinden ipuçları bu videoda yer alıyor.",
-    episode: "Bölüm 4",
-    duration: "21:18",
-    releaseDate: "18 Mart 2024",
-    views: "5.3K",
-    tags: ["Jam", "Prodüksiyon"],
-    badge: "Sıradaki"
-  }
-};
 
 export default function VideoDetail() {
   const { id } = useParams();
-  const video = videos[id];
+  const { catalog, catalogMap, isLoading } = useVideoCatalog();
+  const video = id ? catalogMap[id] : null;
 
-  if (!video) {
-    return <h1 style={{ color: "white", padding: "48px" }}>Video bulunamadı.</h1>;
+  const recommendedVideos = useMemo(() => {
+    if (!catalog.length) return [];
+    return catalog.filter((entry) => entry.id !== id).slice(0, 6);
+  }, [catalog, id]);
+
+  const playbackSource = useMemo(
+    () => resolveVideoSourceForCatalogEntry(video),
+    [video]
+  );
+
+  if (isLoading && !video) {
+    return (
+      <div className="video-detail-page" role="status">
+        <div className="video-loading">
+          <span className="video-loading-spinner" aria-hidden="true" />
+          <span>Video bilgileri yükleniyor...</span>
+        </div>
+      </div>
+    );
   }
 
-  const recommendedVideos = Object.entries(videos)
-    .filter(([videoId]) => videoId !== id)
-    .map(([videoId, data]) => ({ id: videoId, ...data }));
+  if (!video) {
+    return (
+      <div className="video-detail-page">
+        <h1 style={{ color: "white", padding: "48px" }}>Video bulunamadı.</h1>
+      </div>
+    );
+  }
+
+  const updatedLabel = video.updatedAt
+    ? new Date(video.updatedAt).toLocaleDateString("tr-TR")
+    : null;
 
   return (
     <div className="video-detail-page">
       <div className="video-breadcrumb">
         <Link to="/videos">Videolar</Link>
         <span>/</span>
-        <span>{video.episode}</span>
+        <span>{video.title}</span>
       </div>
 
       <header className="video-detail-header">
         <div>
           <h1>{video.title}</h1>
           <div className="video-meta">
-            <span>{video.episode}</span>
-            <span>Süre: {video.duration}</span>
-            <span>Yayın: {video.releaseDate}</span>
-            <span>{video.views} izlenme</span>
+            <span>{getAgeRatingLabel(video.ageRating)}</span>
+            {updatedLabel ? <span>Güncellendi: {updatedLabel}</span> : null}
           </div>
         </div>
         <div className="video-actions">
-          <button type="button" className="video-primary-btn">
+          <a
+            href={`/watch/${encodeURIComponent(video.id)}`}
+            className="video-primary-btn"
+          >
             İzlemeye Başla
-          </button>
+          </a>
           <button type="button" className="video-secondary-btn">
             Listeye Ekle
           </button>
@@ -96,15 +75,18 @@ export default function VideoDetail() {
         <main>
           <div className="video-player-wrapper">
             <video
-              key={id}
-              src={video.src}
+              key={video.id}
+              src={playbackSource}
+              poster={video.thumbnail.src || undefined}
               controls
               preload="metadata"
               className="video-player"
             />
           </div>
 
-          <p className="video-description">{video.description}</p>
+          <p className="video-description">
+            {video.description || "Bu video için henüz açıklama eklenmemiş."}
+          </p>
 
           <section className="video-rating" aria-label="Video beğeni ve puanlama">
             <h3>Bu bölümü puanla</h3>
@@ -124,7 +106,7 @@ export default function VideoDetail() {
 
           <section className="comment-section" aria-label="Video yorumları">
             <h3>Yorumunu bırak</h3>
-            <textarea placeholder="Bu bölüm hakkında düşüncelerini paylaş..." />
+            <textarea placeholder="Bu video hakkında düşüncelerini paylaş..." />
             <button type="button">Yorumu Gönder</button>
           </section>
         </main>
@@ -133,17 +115,31 @@ export default function VideoDetail() {
           <h3>Önerilen Videolar</h3>
           <div className="recommended-list">
             {recommendedVideos.map((item) => (
-              <Link key={item.id} to={`/videos/${item.id}`} className="recommended-card">
+              <Link
+                key={item.id}
+                to={`/videos/${encodeURIComponent(item.id)}`}
+                className="recommended-card"
+              >
                 <div className="recommended-thumb">
-                  <span>{item.badge}</span>
+                  {item.thumbnail.src ? (
+                    <img
+                      src={item.thumbnail.src}
+                      alt={`${item.title} kapak görseli`}
+                      loading="lazy"
+                    />
+                  ) : null}
+                  <span>{getAgeRatingLabel(item.ageRating)}</span>
                 </div>
                 <div className="recommended-info">
                   <h4>{item.title}</h4>
-                  <p>{item.description}</p>
-                  <div className="recommended-meta">
-                    <span>{item.episode}</span>
-                    <span>{item.duration}</span>
-                  </div>
+                  <p>{item.description || "Bu video için açıklama eklenmemiş."}</p>
+                  {item.updatedAt ? (
+                    <div className="recommended-meta">
+                      <span>
+                        {new Date(item.updatedAt).toLocaleDateString("tr-TR")}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </Link>
             ))}

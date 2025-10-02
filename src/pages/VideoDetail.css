@@ -7,6 +7,35 @@
   min-height: 100vh;
 }
 
+.video-loading {
+  margin: 120px auto;
+  max-width: 340px;
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  color: #c6c7da;
+  font-size: 1.05rem;
+}
+
+.video-loading-spinner {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 4px solid rgba(155, 93, 229, 0.25);
+  border-top-color: #9b5de5;
+  animation: video-detail-spin 1s linear infinite;
+}
+
+@keyframes video-detail-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .video-breadcrumb {
   display: inline-flex;
   align-items: center;
@@ -285,6 +314,13 @@
   overflow: hidden;
   aspect-ratio: 16 / 9;
   background: linear-gradient(135deg, rgba(155, 93, 229, 0.25), rgba(67, 97, 238, 0.25));
+}
+
+.recommended-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .recommended-thumb span {

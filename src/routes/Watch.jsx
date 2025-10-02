@@ -6,6 +6,8 @@ import { buildCastListFromTimeline } from "../utils/timelineLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
 import { findEpisodeByVideoId } from "../data/contents";
 import { getVideoEntry, videoLibrary } from "../data/videoLibrary";
+import { fetchVideoDetails } from "../utils/videoDetailsApi";
+import { getAgeRatingLabel } from "../utils/videoCatalog";
 import { loadHls } from "../utils/loadHls";
 import {
   isHlsSource,
@@ -95,7 +97,24 @@ export default function Watch() {
 
   const [qualityOpen, setQualityOpen] = useState(false);
   const [toast, setToast] = useState("");
-    const toastTimerRef = useRef(null);
+  const toastTimerRef = useRef(null);
+  const [videoDetails, setVideoDetails] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setVideoDetails(null);
+    if (!id) return () => {
+      cancelled = true;
+    };
+    (async () => {
+      const details = await fetchVideoDetails(id);
+      if (!cancelled) {
+        setVideoDetails(details);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
   const showToast = useCallback(
     (message, duration = 1800) => {
       setToast(message);
@@ -115,13 +134,20 @@ export default function Watch() {
   );
 
   const allowQualityMenu = !isHls && qualityOptions.length > 1;
+  const detailsTitle = videoDetails?.title?.trim();
+  const detailsDescription = videoDetails?.description?.trim();
+  const ageRatingLabel = getAgeRatingLabel(videoDetails?.ageRating);
   const headerTitle =
-    episodeInfo?.episode?.title || videoEntry?.title || "Player Sayfası";
-  const headerSubtitle = episodeInfo
+    detailsTitle ||
+    episodeInfo?.episode?.title ||
+    videoEntry?.title ||
+    "Player Sayfası";
+  const fallbackSubtitle = episodeInfo
     ? `${episodeInfo.content.title}${
         episodeInfo.episode?.id ? ` • Bölüm ${episodeInfo.episode.id}` : ""
       }`
     : videoEntry?.description || "";
+  const headerSubtitle = detailsDescription || fallbackSubtitle;
   const sourceLabel = isHls ? "HLS akışı" : "MP4 dosyası";
   const qualityHint = isHls
     ? "Bu video HLS (HTTP Live Streaming) formatında yayınlanıyor; kalite seçimi oynatıcı tarafından otomatik yapılır."
@@ -134,8 +160,9 @@ export default function Watch() {
     : `Varsayılan kalite adlandırması: /videos/${id}_480.mp4, _720, _1080.`;
 
   const displayDescription =
-    videoEntry?.description ||
+    detailsDescription ||
     episodeInfo?.content?.description ||
+    videoEntry?.description ||
     "Lyra Records arşivinden bir video.";
 
   const recommendedEpisodes = useMemo(() => {
@@ -497,6 +524,9 @@ export default function Watch() {
             <p className="watch-subtitle">{headerSubtitle}</p>
           )}
           <div className="watch-meta">
+            <span>
+              Yaş Sınırı: <b className="watch-accent">{ageRatingLabel}</b>
+            </span>
             {episodeInfo?.episode?.title && <span>{episodeInfo.episode.title}</span>}
             <span>
               Video ID: <b className="watch-accent">{id}</b>
@@ -547,7 +577,9 @@ export default function Watch() {
                 preload="metadata"
                 className="watch-video"
                 onClick={togglePlay}
-                poster={videoEntry?.poster}
+                poster={
+                  videoDetails?.thumbnail?.src || videoEntry?.poster || undefined
+                }
               />
 
               <XRayPanel
