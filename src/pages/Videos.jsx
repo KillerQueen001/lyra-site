@@ -5,6 +5,8 @@ import {
   getAgeRatingLabel,
   resolveVideoSourceForCatalogEntry,
 } from "../utils/videoCatalog";
+import { loadHls } from "../utils/loadHls";
+import { isHlsSource } from "../utils/videoSource";
 import "./Videos.css";
 
 export default function Videos() {
@@ -70,6 +72,7 @@ function VideoCard({ video, spotlight = false, index = 0 }) {
   const [isHovering, setIsHovering] = useState(false);
   const previewTimer = useRef(null);
   const videoRef = useRef(null);
+  const hlsRef = useRef(null);
 
   const previewSrc = useMemo(
     () => resolveVideoSourceForCatalogEntry(video),
@@ -100,6 +103,75 @@ function VideoCard({ video, spotlight = false, index = 0 }) {
       window.clearTimeout(previewTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return undefined;
+
+    let cancelled = false;
+
+    const detach = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    if (!previewSrc) {
+      detach();
+      delete videoElement.dataset.previewSrc;
+      videoElement.removeAttribute("src");
+      videoElement.load();
+      return () => {
+        cancelled = true;
+        detach();
+      };
+    }
+
+    const assignDirectSource = () => {
+      if (videoElement.dataset.previewSrc === previewSrc) return;
+      detach();
+      videoElement.src = previewSrc;
+      videoElement.load();
+      videoElement.dataset.previewSrc = previewSrc;
+    };
+
+    if (isHlsSource(previewSrc)) {
+      if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+        assignDirectSource();
+      } else {
+        loadHls()
+          .then((HlsLib) => {
+            if (cancelled) return;
+            const HlsCtor = HlsLib?.default ?? HlsLib;
+            if (!HlsCtor?.isSupported?.()) {
+              assignDirectSource();
+              return;
+            }
+            detach();
+            const instance = new HlsCtor();
+            hlsRef.current = instance;
+            instance.loadSource(previewSrc);
+            instance.attachMedia(videoElement);
+            videoElement.dataset.previewSrc = previewSrc;
+          })
+          .catch(() => {
+            if (cancelled) return;
+            assignDirectSource();
+          });
+      }
+    } else {
+      assignDirectSource();
+    }
+
+    return () => {
+      cancelled = true;
+      detach();
+      delete videoElement.dataset.previewSrc;
+      videoElement.removeAttribute("src");
+      videoElement.load();
+    };
+  }, [previewSrc]);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -151,6 +223,7 @@ function VideoCard({ video, spotlight = false, index = 0 }) {
           muted
           playsInline
           loop
+          preload="metadata"
         />
 
         <div className="videos-card-glow" aria-hidden="true" />

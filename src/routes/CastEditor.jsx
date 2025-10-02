@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import CastTimelineEditor from "../components/CastTimelineEditor";
 import { xrayDemo } from "../data/xrayDemo";
-import { getVideoEntry } from "../data/videoLibrary";
+import { useVideoEntry } from "../hooks/useVideoLibrary";
 import { applyOverrides, saveCastSlots } from "../utils/castLocal";
 import { loadHls } from "../utils/loadHls";
 import { isHlsSource, resolveSingleVideo, resolveVideoSrc } from "../utils/videoSource";
@@ -14,7 +14,7 @@ export default function CastEditor() {
   const { id = "demo", castId = "" } = useParams();
   const nav = useNavigate();
 
-  const videoEntry = useMemo(() => getVideoEntry(id), [id]);
+  const videoEntry = useVideoEntry(id);
   const videoRef = useRef(null);  
   const hlsRef = useRef(null);
 
@@ -39,7 +39,7 @@ export default function CastEditor() {
 
   useEffect(() => {
     setSrc(resolveVideoSrc(id, PREFS[prefIdx]));
-  }, [id, prefIdx]);
+  }, [id, prefIdx, videoEntry]);
 
   // sayfa ilk açılış + her odaklanmada override’ları tazele
   useEffect(() => {

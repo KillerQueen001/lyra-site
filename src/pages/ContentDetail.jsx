@@ -2,18 +2,19 @@
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { contents } from "../data/contents";
-import { getVideoEntry } from "../data/videoLibrary";
+import { useVideoLibraryEntries } from "../hooks/useVideoLibrary";
 
 export default function ContentDetail() {
   const { id } = useParams();
   const content = contents[id];
+  const videoLibraryEntries = useVideoLibraryEntries();
   const enrichedEpisodes = useMemo(() => {
     if (!content) return [];
     return content.episodes.map((ep) => ({
       ...ep,
-      video: getVideoEntry(ep.videoId),
+      video: videoLibraryEntries[ep.videoId] || null,
     }));
-  }, [content]);
+  }, [content, videoLibraryEntries]);
 
   if (!content) {
     return <h1 style={{ color: "white", padding: "40px" }}>İçerik bulunamadı.</h1>;

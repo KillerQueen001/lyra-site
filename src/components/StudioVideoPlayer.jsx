@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadHls } from "../utils/loadHls";
-import { getVideoEntry } from "../data/videoLibrary";
+import { useVideoEntry } from "../hooks/useVideoLibrary";
 import {
   isHlsSource,
   resolveVideoSrc,
@@ -25,10 +25,13 @@ export default function StudioVideoPlayer({
   const videoRef = externalRef ?? innerRef;
   const hlsRef = useRef(null);
 
-  const entry = useMemo(() => getVideoEntry(videoId), [videoId]);
+const entry = useVideoEntry(videoId);
   const poster = entry?.poster;
-  const src = useMemo(() => resolveVideoSrc(videoId), [videoId]);
-  const fallbackSrc = useMemo(() => resolveSingleVideo(videoId), [videoId]);
+  const src = useMemo(() => resolveVideoSrc(videoId), [videoId, entry]);
+  const fallbackSrc = useMemo(
+    () => resolveSingleVideo(videoId),
+    [videoId, entry]
+  );
   const [resolvedSrc, setResolvedSrc] = useState(src || fallbackSrc);
   const [isHls, setIsHls] = useState(() => isHlsSource(src || fallbackSrc));
   const [duration, setDuration] = useState(0);

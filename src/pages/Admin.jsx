@@ -17,6 +17,13 @@ const adminSections = [
     to: "/admin/casts",
   },
   {
+    id: "video-library",
+    title: "Video Ekleme",
+    description:
+      "Streaming servisinden aldığınız HLS bağlantılarıyla yeni videoları arşive ekleyin.",
+    to: "/admin/videos",
+  },
+  {
     id: "timeline",
     title: "Timeline Yönetimi",
     description:

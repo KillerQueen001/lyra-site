@@ -66,14 +66,16 @@ function mergeVideoEntry(videoId, detailEntry = {}, baseEntry = {}) {
   };
 }
 
-export function buildVideoCatalog(detailsMap = {}) {
+export function buildVideoCatalog(detailsMap = {}, library = videoLibrary) {
+  const libraryMap =
+    library && typeof library === "object" ? library : videoLibrary;
   const ids = new Set([
-    ...Object.keys(videoLibrary),
+    ...Object.keys(libraryMap),
     ...Object.keys(detailsMap || {}),
   ]);
   const entries = [];
   ids.forEach((videoId) => {
-    const baseEntry = videoLibrary[videoId] || {};
+    const baseEntry = libraryMap[videoId] || {};
     const detailEntry = detailsMap[videoId] || {};
     entries.push(mergeVideoEntry(videoId, detailEntry, baseEntry));
   });
@@ -90,14 +92,16 @@ export function buildVideoCatalog(detailsMap = {}) {
   return entries;
 }
 
-export function buildVideoCatalogMap(detailsMap = {}) {
+export function buildVideoCatalogMap(detailsMap = {}, library = videoLibrary) {
+  const libraryMap =
+    library && typeof library === "object" ? library : videoLibrary;
   const map = {};
   const ids = new Set([
-    ...Object.keys(videoLibrary),
+    ...Object.keys(libraryMap),
     ...Object.keys(detailsMap || {}),
   ]);
   ids.forEach((videoId) => {
-    const baseEntry = videoLibrary[videoId] || {};
+    const baseEntry = libraryMap[videoId] || {};
     const detailEntry = detailsMap[videoId] || {};
     map[videoId] = mergeVideoEntry(videoId, detailEntry, baseEntry);
   });
@@ -106,8 +110,11 @@ export function buildVideoCatalogMap(detailsMap = {}) {
 
 export function resolveVideoSourceForCatalogEntry(entry) {
   if (!entry) return "/videos/sample.mp4";
-  if (entry.stream && entry.stream.endsWith(".mp4")) {
+  if (entry.stream) {
     return entry.stream;
+  }
+  if (entry.url) {
+    return entry.url;
   }
   if (entry.files) {
     return (

@@ -16,7 +16,7 @@ export function getApiBase() {
       envUrl =
         import.meta.env.VITE_TIMELINE_API_BASE ?? import.meta.env.VITE_API_BASE;
     }
-  } catch (error) {
+  } catch {
     envUrl = undefined;
   }
 

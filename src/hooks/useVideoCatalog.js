@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchAllVideoDetails } from "../utils/videoDetailsApi";
 import { buildVideoCatalog } from "../utils/videoCatalog";
+import { useVideoLibrary } from "./useVideoLibrary";
 
 export function useVideoCatalog() {
   const [detailsMap, setDetailsMap] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const { library, status: libraryStatus, error: libraryError, reload: reloadLibrary } =
+    useVideoLibrary();
 
   const loadDetails = useCallback(async () => {
     setIsLoading(true);
@@ -37,7 +40,10 @@ export function useVideoCatalog() {
     };
   }, []);
 
-  const catalog = useMemo(() => buildVideoCatalog(detailsMap), [detailsMap]);
+  const catalog = useMemo(
+    () => buildVideoCatalog(detailsMap, library),
+    [detailsMap, library]
+  );
   const catalogMap = useMemo(() => {
     const map = {};
     for (const entry of catalog) {
@@ -46,5 +52,16 @@ export function useVideoCatalog() {
     return map;
   }, [catalog]);
 
-  return { catalog, catalogMap, isLoading, reload: loadDetails };
+  const isLibraryLoading = libraryStatus === "idle" || libraryStatus === "loading";
+  const combinedLoading = isLoading || isLibraryLoading;
+
+  return {
+    catalog,
+    catalogMap,
+    isLoading: combinedLoading,
+    reload: loadDetails,
+    libraryStatus,
+    libraryError,
+    reloadLibrary,
+  };
 }

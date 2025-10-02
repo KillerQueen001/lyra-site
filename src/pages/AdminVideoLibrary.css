@@ -1,0 +1,313 @@
+.admin-video-page {
+  min-height: 100vh;
+  background: radial-gradient(circle at top, rgba(118, 92, 255, 0.12), transparent 55%),
+    #0f0f17;
+  padding: 56px 5vw 80px;
+  color: #f5f4ff;
+}
+
+.admin-video__inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: grid;
+  gap: 40px;
+}
+
+.admin-video__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.admin-video__header h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+}
+
+.admin-video__header p {
+  margin: 12px 0 0;
+  max-width: 640px;
+  color: rgba(241, 240, 255, 0.78);
+  line-height: 1.7;
+}
+
+.admin-video__status {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  padding: 18px 22px;
+  border-radius: 20px;
+  background: rgba(34, 28, 58, 0.75);
+  border: 1px solid rgba(152, 131, 255, 0.3);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-video__status button {
+  background: rgba(147, 120, 255, 0.18);
+  border: 1px solid rgba(147, 120, 255, 0.45);
+  border-radius: 999px;
+  color: inherit;
+  padding: 6px 16px;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.admin-video__status button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-video__status--ready {
+  color: #c9fffd;
+  border-color: rgba(119, 237, 229, 0.45);
+  background: rgba(26, 53, 63, 0.65);
+}
+
+.admin-video__status--error {
+  color: #ffd9e3;
+  border-color: rgba(255, 130, 163, 0.45);
+  background: rgba(70, 26, 45, 0.6);
+}
+
+.admin-video__form {
+  background: rgba(18, 17, 32, 0.85);
+  border: 1px solid rgba(151, 128, 255, 0.25);
+  border-radius: 28px;
+  padding: clamp(28px, 4vw, 40px);
+  display: grid;
+  gap: 32px;
+}
+
+.admin-video__form-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.admin-video__form-head h2 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.admin-video__form-head p {
+  margin: 8px 0 0;
+  color: rgba(228, 227, 255, 0.7);
+  line-height: 1.6;
+}
+
+.admin-video__form-meta {
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(212, 210, 255, 0.75);
+}
+
+.admin-video__form-body {
+  display: grid;
+  gap: 24px;
+}
+
+.admin-video__form-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.admin-video__form-grid label {
+  display: grid;
+  gap: 10px;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(215, 214, 255, 0.72);
+}
+
+.admin-video__form-grid input,
+.admin-video__form-grid textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(154, 128, 255, 0.3);
+  background: rgba(9, 9, 20, 0.85);
+  color: #f5f4ff;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.admin-video__form-grid textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.admin-video__form-grid small {
+  color: rgba(209, 206, 255, 0.6);
+  font-size: 0.75rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.admin-video__span-2 {
+  grid-column: span 2;
+}
+
+@media (max-width: 720px) {
+  .admin-video__span-2 {
+    grid-column: span 1;
+  }
+}
+
+.admin-video__alert {
+  padding: 14px 18px;
+  border-radius: 16px;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.admin-video__alert--error {
+  background: rgba(120, 36, 60, 0.65);
+  border: 1px solid rgba(255, 120, 155, 0.4);
+  color: #ffe0eb;
+}
+
+.admin-video__alert--success {
+  background: rgba(32, 94, 87, 0.65);
+  border: 1px solid rgba(120, 223, 214, 0.45);
+  color: #dcfffa;
+}
+
+.admin-video__actions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-video__actions button {
+  padding: 12px 24px;
+  border-radius: 999px;
+  border: none;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-video__actions button:first-of-type {
+  background: linear-gradient(135deg, rgba(144, 104, 255, 0.85), rgba(87, 70, 190, 0.85));
+  color: #fff;
+}
+
+.admin-video__actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-video__secondary {
+  background: transparent;
+  border: 1px solid rgba(155, 132, 255, 0.45);
+  color: rgba(230, 228, 255, 0.85);
+}
+
+.admin-video__list {
+  background: rgba(15, 14, 26, 0.85);
+  border: 1px solid rgba(124, 104, 210, 0.28);
+  border-radius: 28px;
+  padding: clamp(24px, 3vw, 36px);
+  display: grid;
+  gap: 24px;
+}
+
+.admin-video__list h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.admin-video__empty {
+  margin: 0;
+  color: rgba(215, 214, 255, 0.7);
+}
+
+.admin-video__table {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-video__table-head,
+.admin-video__table-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 2fr 0.8fr;
+  gap: 18px;
+  align-items: center;
+}
+
+.admin-video__table-head {
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(204, 202, 255, 0.6);
+}
+
+.admin-video__table-body {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-video__table-row {
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(22, 21, 35, 0.85);
+  border: 1px solid rgba(139, 120, 220, 0.22);
+}
+
+.admin-video__table-row strong {
+  font-size: 1rem;
+}
+
+.admin-video__table-row code {
+  background: rgba(19, 18, 32, 0.8);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  color: rgba(219, 216, 255, 0.9);
+}
+
+.admin-video__cell-stream a {
+  color: rgba(152, 204, 255, 0.85);
+  word-break: break-all;
+}
+
+@media (max-width: 860px) {
+  .admin-video__table-head,
+  .admin-video__table-row {
+    grid-template-columns: 1.2fr 1fr;
+    grid-template-areas:
+      "title title"
+      "id stream"
+      "date stream";
+  }
+
+  .admin-video__table-head span:nth-child(1),
+  .admin-video__table-row span:nth-child(1) {
+    grid-area: title;
+  }
+
+  .admin-video__table-head span:nth-child(2),
+  .admin-video__table-row span:nth-child(2) {
+    grid-area: id;
+  }
+
+  .admin-video__table-head span:nth-child(3),
+  .admin-video__table-row span:nth-child(3) {
+    grid-area: stream;
+  }
+
+  .admin-video__table-head span:nth-child(4),
+  .admin-video__table-row span:nth-child(4) {
+    grid-area: date;
+  }
+}

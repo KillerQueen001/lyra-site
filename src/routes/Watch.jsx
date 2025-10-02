@@ -5,7 +5,7 @@ import { applyOverrides } from "../utils/castLocal";
 import { buildCastListFromTimeline } from "../utils/timelineLocal";
 import { xrayDemo } from "../data/xrayDemo"; // zaten var
 import { findEpisodeByVideoId } from "../data/contents";
-import { getVideoEntry, videoLibrary } from "../data/videoLibrary";
+import { useVideoEntry, useVideoLibraryEntries } from "../hooks/useVideoLibrary";
 import { fetchVideoDetails } from "../utils/videoDetailsApi";
 import { getAgeRatingLabel } from "../utils/videoCatalog";
 import { loadHls } from "../utils/loadHls";
@@ -53,7 +53,8 @@ function MenuItem({ label, active, onClick }) {
 
 export default function Watch() {
   const { id } = useParams();
-  const videoEntry = useMemo(() => getVideoEntry(id), [id]);
+  const videoEntry = useVideoEntry(id);
+  const videoLibraryEntries = useVideoLibraryEntries();
   const episodeInfo = useMemo(() => findEpisodeByVideoId(id), [id]);
   const fileQualities = useMemo(() => {
     if (!videoEntry?.files) return [];
@@ -74,7 +75,7 @@ export default function Watch() {
   useEffect(() => {
     setQuality(defaultQuality);
   }, [defaultQuality]);
-  const src = useMemo(() => resolveVideoSrc(id, quality), [id, quality]);
+  const src = useMemo(() => resolveVideoSrc(id, quality), [id, quality, videoEntry]);
 
   const isHls = useMemo(
     () => isHlsSource(src) || (videoEntry?.stream ? isHlsSource(videoEntry.stream) : false),
@@ -170,7 +171,7 @@ export default function Watch() {
       const siblings = episodeInfo.content.episodes
         .filter((ep) => ep.videoId !== id)
         .map((ep) => {
-          const entry = getVideoEntry(ep.videoId);
+          const entry = videoLibraryEntries[ep.videoId] || null;
           return {
             id: ep.videoId,
             title: entry?.title || `${episodeInfo.content.title} — ${ep.title}`,
@@ -187,7 +188,7 @@ export default function Watch() {
       }
     }
 
-    return Object.entries(videoLibrary)
+    return Object.entries(videoLibraryEntries)
       .filter(([videoId]) => videoId !== id)
       .map(([videoId, entry]) => ({
         id: videoId,
@@ -197,7 +198,7 @@ export default function Watch() {
         badge: "Önerilen",
         poster: entry.poster || null,
       }));
-  }, [episodeInfo, id]);
+  }, [episodeInfo, id, videoLibraryEntries]);
 
   useEffect(() => {
     if (!allowQualityMenu) {

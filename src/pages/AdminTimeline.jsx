@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AdminTimelinePanel from "../components/AdminTimelinePanel";
 import StudioVideoPlayer from "../components/StudioVideoPlayer";
-import { videoLibrary } from "../data/videoLibrary";
+import { useVideoLibrary } from "../hooks/useVideoLibrary";
 import {
   buildTimelineCastLibrary,
   fetchCasts,
@@ -20,15 +20,22 @@ const PRESET_CAST_LIBRARY = buildTimelineCastLibrary(PRESET_CASTS);
 
 const INITIAL_TIMELINE = [];
 
-const VIDEO_OPTIONS = Object.entries(videoLibrary).map(([id, entry]) => ({
-  id,
-  title: entry.title || id,
-}));
-
 export default function AdminTimeline() {
   const videoRef = useRef(null);
-  const defaultVideoId = VIDEO_OPTIONS[0]?.id || "sample";
-  const [selectedVideoId, setSelectedVideoId] = useState(defaultVideoId);
+  const { library } = useVideoLibrary();
+  const videoOptions = useMemo(() => {
+    const options = Object.entries(library || {}).map(([id, entry]) => ({
+      id,
+      title: entry?.title || id,
+    }));
+    options.sort((a, b) =>
+      a.title.localeCompare(b.title, "tr", { sensitivity: "base" })
+    );
+    return options;
+  }, [library]);
+  const [selectedVideoId, setSelectedVideoId] = useState(
+    videoOptions[0]?.id || "sample"
+  );
   const [slots, setSlots] = useState(INITIAL_TIMELINE);
   const [baseCastLibrary, setBaseCastLibrary] = useState(PRESET_CAST_LIBRARY);
   const [castLibrary, setCastLibrary] = useState(PRESET_CAST_LIBRARY);
@@ -161,6 +168,16 @@ export default function AdminTimeline() {
     event.dataTransfer.effectAllowed = "copy";
   };
 
+  useEffect(() => {
+    if (!videoOptions.length) return;
+    setSelectedVideoId((prev) => {
+      if (prev && library?.[prev]) {
+        return prev;
+      }
+      return videoOptions[0].id;
+    });
+  }, [videoOptions, library]);
+
   return (
     <div className="admin-timeline-page">
       <header className="admin-timeline-header">
@@ -174,16 +191,16 @@ export default function AdminTimeline() {
         <div className="admin-timeline-meta">
           <label className="admin-timeline-select">
             <span>Video</span>
-            <select
-              value={selectedVideoId}
-              onChange={(event) => setSelectedVideoId(event.target.value)}
-            >
-              {VIDEO_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.title}
-                </option>
-              ))}
-            </select>
+              <select
+                value={selectedVideoId}
+                onChange={(event) => setSelectedVideoId(event.target.value)}
+              >
+                {videoOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.title}
+                  </option>
+                ))}
+              </select>
           </label>
           <span>{slots.length} blok</span>
           {lastSavedAt && (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { videoLibrary } from "../data/videoLibrary";
+import { useVideoLibraryEntries } from "../hooks/useVideoLibrary";
 import { fetchAllVideoDetails, saveVideoDetails } from "../utils/videoDetailsApi";
 import { loadHls } from "../utils/loadHls";
 import { isHlsSource, resolveSingleVideo } from "../utils/videoSource";
@@ -13,13 +14,9 @@ const AGE_RATINGS = [
   { value: "18", label: "+18" },
 ];
 
-const VIDEO_OPTIONS = Object.entries(videoLibrary).map(([id, entry]) => ({
-  id,
-  title: entry.title || id,
-}));
-
-function getDefaultDetails(videoId) {
-  const entry = videoLibrary[videoId] || {};
+function getDefaultDetails(videoId, library = videoLibrary) {
+  const source = library && typeof library === "object" ? library : videoLibrary;
+  const entry = source[videoId] || {};
   const title = entry.title || "Yeni Video";
   const description =
     entry.description || "Videonuz için açıklamayı buraya yazın.";
@@ -41,8 +38,20 @@ export default function VideoEditor() {
   const hlsRef = useRef(null);
   const thumbnailInputRef = useRef(null);
   const statusTimeoutRef = useRef(null);
-  const defaultVideoId = VIDEO_OPTIONS[0]?.id || "sample";
-  const [selectedVideoId, setSelectedVideoId] = useState(defaultVideoId);
+  const videoLibraryEntries = useVideoLibraryEntries();
+  const videoOptions = useMemo(() => {
+    const options = Object.entries(videoLibraryEntries || {}).map(([id, entry]) => ({
+      id,
+      title: entry?.title || id,
+    }));
+    options.sort((a, b) =>
+      a.title.localeCompare(b.title, "tr", { sensitivity: "base" })
+    );
+    return options;
+  }, [videoLibraryEntries]);
+  const [selectedVideoId, setSelectedVideoId] = useState(
+    videoOptions[0]?.id || "sample"
+  );
   const [videoDetailsMap, setVideoDetailsMap] = useState({});
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [isSaving, setIsSaving] = useState(false)
@@ -79,7 +88,7 @@ export default function VideoEditor() {
         statusTimeoutRef.current = null;
       }
       const stored = videoDetailsMap[videoId];
-      const fallback = getDefaultDetails(videoId);
+      const fallback = getDefaultDetails(videoId, videoLibraryEntries);
       const details = stored || fallback;
       setTitle(details.title || fallback.title);
       setDescription(details.description || fallback.description);
@@ -98,7 +107,7 @@ export default function VideoEditor() {
         thumbnailInputRef.current.value = "";
       }
     },
-    [videoDetailsMap]
+    [videoDetailsMap, videoLibraryEntries]
   );
 
   useEffect(() => {
@@ -107,14 +116,14 @@ export default function VideoEditor() {
 
   const selectedVideoSource = useMemo(
     () => resolveSingleVideo(selectedVideoId),
-    [selectedVideoId]
+    [selectedVideoId, videoLibraryEntries]
   );
 
   const selectedVideoPoster = useMemo(() => {
     if (thumbnailPreview) return thumbnailPreview;
-    const entry = videoLibrary[selectedVideoId];
+    const entry = videoLibraryEntries[selectedVideoId];
     return entry?.poster || "";
-  }, [selectedVideoId, thumbnailPreview]);
+  }, [selectedVideoId, thumbnailPreview, videoLibraryEntries]);
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -257,6 +266,16 @@ export default function VideoEditor() {
     []
   );
 
+  useEffect(() => {
+    if (!videoOptions.length) return;
+    setSelectedVideoId((prev) => {
+      if (prev && videoLibraryEntries?.[prev]) {
+        return prev;
+      }
+      return videoOptions[0].id;
+    });
+  }, [videoOptions, videoLibraryEntries]);
+  
   return (
     <div className="video-editor-page">
       <div className="video-editor-shell">
@@ -275,7 +294,7 @@ export default function VideoEditor() {
                 value={selectedVideoId}
                 onChange={(event) => setSelectedVideoId(event.target.value)}
               >
-                {VIDEO_OPTIONS.map((option) => (
+                {videoOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.title}
                   </option>
