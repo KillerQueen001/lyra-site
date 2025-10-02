@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { videoLibrary } from "../data/videoLibrary";
 import { fetchAllVideoDetails, saveVideoDetails } from "../utils/videoDetailsApi";
+import { loadHls } from "../utils/loadHls";
+import { isHlsSource, resolveSingleVideo } from "../utils/videoSource";
 import "./VideoEditor.css";
 
 const AGE_RATINGS = [
@@ -34,26 +36,9 @@ function getDefaultDetails(videoId) {
   };
 }
 
-function resolveVideoSource(videoId) {
-  const entry = videoLibrary[videoId] || {};
-  if (entry.files && typeof entry.files === "object") {
-    const candidate =
-      entry.files.single ||
-      entry.files["1080"] ||
-      entry.files["720"] ||
-      entry.files["480"];
-    if (candidate) {
-      return candidate;
-    }
-  }
-  if (typeof entry.stream === "string" && entry.stream.endsWith(".mp4")) {
-    return entry.stream;
-  }
-  return "/videos/sample.mp4";
-}
-
 export default function VideoEditor() {
   const videoRef = useRef(null);
+  const hlsRef = useRef(null);
   const thumbnailInputRef = useRef(null);
   const statusTimeoutRef = useRef(null);
   const defaultVideoId = VIDEO_OPTIONS[0]?.id || "sample";
@@ -121,7 +106,7 @@ export default function VideoEditor() {
   }, [selectedVideoId, videoDetailsMap, applyVideoDetails]);
 
   const selectedVideoSource = useMemo(
-    () => resolveVideoSource(selectedVideoId),
+    () => resolveSingleVideo(selectedVideoId),
     [selectedVideoId]
   );
 
@@ -132,10 +117,64 @@ export default function VideoEditor() {
   }, [selectedVideoId, thumbnailPreview]);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.load();
+    const videoElement = videoRef.current;
+    if (!videoElement) return undefined;
+
+    let cancelled = false;
+
+    const teardown = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    teardown();
+    videoElement.pause();
+    videoElement.removeAttribute("src");
+    videoElement.load();
+
+    if (!selectedVideoSource) {
+      return () => {
+        cancelled = true;
+        teardown();
+      };
     }
-  }, [selectedVideoId, selectedVideoSource]);
+
+    if (isHlsSource(selectedVideoSource)) {
+      if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+        videoElement.src = selectedVideoSource;
+        videoElement.load();
+      } else {
+        loadHls()
+          .then((Hls) => {
+            if (cancelled) return;
+            if (!Hls || !Hls.isSupported()) {
+              videoElement.src = selectedVideoSource;
+              videoElement.load();
+              return;
+            }
+            const hls = new Hls();
+            hlsRef.current = hls;
+            hls.loadSource(selectedVideoSource);
+            hls.attachMedia(videoElement);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            videoElement.src = selectedVideoSource;
+            videoElement.load();
+          });
+      }
+    } else {
+      videoElement.src = selectedVideoSource;
+      videoElement.load();
+    }
+ 
+    return () => {
+      cancelled = true;
+      teardown();
+    };
+  }, [selectedVideoSource]);
   const handleThumbnailChange = (event) => {
     const file = event.target.files && event.target.files[0];
     setThumbnailError("");
@@ -260,13 +299,11 @@ export default function VideoEditor() {
             <div className="video-stage">
               <div className="video-frame">
                 <video
-                  key={selectedVideoId}
                   ref={videoRef}
                   controls
                   preload="metadata"
                   poster={selectedVideoPoster || undefined}
                 >
-                  <source src={selectedVideoSource} type="video/mp4" />
                   Tarayıcınız video etiketini desteklemiyor.
                 </video>
               </div>
