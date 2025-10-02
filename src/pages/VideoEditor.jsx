@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { videoLibrary } from "../data/videoLibrary";
+import { fetchAllVideoDetails, saveVideoDetails } from "../utils/videoDetailsApi";
 import "./VideoEditor.css";
 
 const AGE_RATINGS = [
@@ -9,9 +11,56 @@ const AGE_RATINGS = [
   { value: "18", label: "+18" },
 ];
 
+const VIDEO_OPTIONS = Object.entries(videoLibrary).map(([id, entry]) => ({
+  id,
+  title: entry.title || id,
+}));
+
+function getDefaultDetails(videoId) {
+  const entry = videoLibrary[videoId] || {};
+  const title = entry.title || "Yeni Video";
+  const description =
+    entry.description || "Videonuz için açıklamayı buraya yazın.";
+  const poster = entry.poster || "";
+  return {
+    title,
+    description,
+    ageRating: "all",
+    thumbnail: {
+      src: poster,
+      name: poster ? poster.split("/").pop() || "" : "",
+    },
+    updatedAt: null,
+  };
+}
+
+function resolveVideoSource(videoId) {
+  const entry = videoLibrary[videoId] || {};
+  if (entry.files && typeof entry.files === "object") {
+    const candidate =
+      entry.files.single ||
+      entry.files["1080"] ||
+      entry.files["720"] ||
+      entry.files["480"];
+    if (candidate) {
+      return candidate;
+    }
+  }
+  if (typeof entry.stream === "string" && entry.stream.endsWith(".mp4")) {
+    return entry.stream;
+  }
+  return "/videos/sample.mp4";
+}
+
 export default function VideoEditor() {
   const videoRef = useRef(null);
   const thumbnailInputRef = useRef(null);
+  const statusTimeoutRef = useRef(null);
+  const defaultVideoId = VIDEO_OPTIONS[0]?.id || "sample";
+  const [selectedVideoId, setSelectedVideoId] = useState(defaultVideoId);
+  const [videoDetailsMap, setVideoDetailsMap] = useState({});
+  const [isLoadingDetails, setIsLoadingDetails] = useState(true);
+  const [isSaving, setIsSaving] = useState(false)
   const [title, setTitle] = useState("Yeni Video");
   const [description, setDescription] = useState(
     "Videonuz için açıklamayı buraya yazın."
@@ -22,7 +71,71 @@ export default function VideoEditor() {
   const [thumbnailError, setThumbnailError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
+  const [statusTone, setStatusTone] = useState("info");
 
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoadingDetails(true);
+    (async () => {
+      const entries = await fetchAllVideoDetails();
+      if (cancelled) return;
+      setVideoDetailsMap(entries);
+      setIsLoadingDetails(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyVideoDetails = useCallback(
+    (videoId) => {
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+      const stored = videoDetailsMap[videoId];
+      const fallback = getDefaultDetails(videoId);
+      const details = stored || fallback;
+      setTitle(details.title || fallback.title);
+      setDescription(details.description || fallback.description);
+      setAgeRating(details.ageRating || fallback.ageRating);
+      const thumbSrc = details.thumbnail?.src || fallback.thumbnail.src;
+      const thumbName = details.thumbnail?.name || fallback.thumbnail.name;
+      setThumbnailPreview(thumbSrc || "");
+      setThumbnailName(thumbName || "");
+      setThumbnailError("");
+      setStatusMessage("");
+      setStatusTone("info");
+      setLastSavedAt(
+        details.updatedAt ? new Date(details.updatedAt) : fallback.updatedAt
+      );
+      if (thumbnailInputRef.current) {
+        thumbnailInputRef.current.value = "";
+      }
+    },
+    [videoDetailsMap]
+  );
+
+  useEffect(() => {
+    applyVideoDetails(selectedVideoId);
+  }, [selectedVideoId, videoDetailsMap, applyVideoDetails]);
+
+  const selectedVideoSource = useMemo(
+    () => resolveVideoSource(selectedVideoId),
+    [selectedVideoId]
+  );
+
+  const selectedVideoPoster = useMemo(() => {
+    if (thumbnailPreview) return thumbnailPreview;
+    const entry = videoLibrary[selectedVideoId];
+    return entry?.poster || "";
+  }, [selectedVideoId, thumbnailPreview]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.load();
+    }
+  }, [selectedVideoId, selectedVideoSource]);
   const handleThumbnailChange = (event) => {
     const file = event.target.files && event.target.files[0];
     setThumbnailError("");
@@ -50,51 +163,110 @@ export default function VideoEditor() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
-    const timestamp = new Date();
-    setLastSavedAt(timestamp);
-    setStatusMessage(
-      `Kaydedildi: ${timestamp.toLocaleTimeString("tr-TR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`
-    );
-    setTimeout(() => {
-      setStatusMessage("");
-    }, 4000);
+  const handleSave = async () => {
+    if (!selectedVideoId) return;
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = null;
+    }
+    setIsSaving(true);
+    setStatusTone("info");
+    setStatusMessage("Kaydediliyor...");
+    const result = await saveVideoDetails(selectedVideoId, {
+      title,
+      description,
+      ageRating,
+      thumbnail: { src: thumbnailPreview, name: thumbnailName },
+    });
+    if (result.ok && result.data) {
+      setVideoDetailsMap((prev) => ({
+        ...prev,
+        [selectedVideoId]: result.data,
+      }));
+      const timestamp = result.data.updatedAt
+        ? new Date(result.data.updatedAt)
+        : new Date();
+      setLastSavedAt(timestamp);
+      setStatusTone("success");
+      setStatusMessage(
+        `Kaydedildi: ${timestamp.toLocaleTimeString("tr-TR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`
+      );
+      statusTimeoutRef.current = setTimeout(() => {
+        setStatusMessage("");
+        statusTimeoutRef.current = null;
+      }, 4000);
+    } else {
+      setStatusTone("error");
+      setStatusMessage("Kaydedilemedi. Lütfen tekrar deneyin.");
+    }
+    setIsSaving(false);
   };
 
   const handleReset = () => {
-    setTitle("Yeni Video");
-    setDescription("Videonuz için açıklamayı buraya yazın.");
-    setAgeRating("all");
-    setThumbnailPreview("");
-    setThumbnailName("");
-    setThumbnailError("");
-    setStatusMessage("");
-    setLastSavedAt(null);
-    if (thumbnailInputRef.current) {
-      thumbnailInputRef.current.value = "";
-    }
+    applyVideoDetails(selectedVideoId);
   };
+
+  useEffect(
+    () => () => {
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   return (
     <div className="video-editor-page">
       <div className="video-editor-shell">
         <header className="video-editor-header">
-          <h1>Video Düzenleyici</h1>
-          <p>
-            Başlığı, açıklamayı, kapak görselini ve yaş kısıtlamasını düzenleyin.
-            Yapılan değişiklikleri kaydedin veya sıfırlayın.
-          </p>
+          <div className="video-editor-header-copy">
+            <h1>Video Düzenleyici</h1>
+            <p>
+              Başlığı, açıklamayı, kapak görselini ve yaş kısıtlamasını düzenleyin.
+              Yapılan değişiklikleri kaydedin veya sıfırlayın.
+            </p>
+          </div>
+          <div className="video-editor-header-controls">
+            <label className="video-editor-select">
+              <span>Video Seç</span>
+              <select
+                value={selectedVideoId}
+                onChange={(event) => setSelectedVideoId(event.target.value)}
+              >
+                {VIDEO_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isLoadingDetails ? (
+              <span className="video-editor-header-status">
+                Kaydedilen bilgiler yükleniyor...
+              </span>
+            ) : (
+              <span className="video-editor-header-status video-editor-header-status--ready">
+                Kaydedilen bilgiler hazır.
+              </span>
+            )}
+          </div>
         </header>
 
         <div className="video-editor-grid">
           <section className="editor-main">
             <div className="video-stage">
               <div className="video-frame">
-                <video ref={videoRef} controls preload="metadata">
-                  <source src="/videos/sample.mp4" type="video/mp4" />
+                <video
+                  key={selectedVideoId}
+                  ref={videoRef}
+                  controls
+                  preload="metadata"
+                  poster={selectedVideoPoster || undefined}
+                >
+                  <source src={selectedVideoSource} type="video/mp4" />
                   Tarayıcınız video etiketini desteklemiyor.
                 </video>
               </div>
@@ -166,16 +338,18 @@ export default function VideoEditor() {
                 </label>
               </div>
               <div className="metadata-actions">
-                <button type="button" onClick={handleSave}>
+                <button type="button" onClick={handleSave} disabled={isSaving}>
                   Kaydet
                 </button>
                 <button type="button" className="metadata-secondary" onClick={handleReset}>
                   Sıfırla
                 </button>
               </div>
-              <div className="metadata-status">
-                {statusMessage && <span>{statusMessage}</span>}
-                {lastSavedAt && !statusMessage && (
+              <div className={`metadata-status metadata-status--${statusTone}`}>
+                {statusMessage && (
+                  <span className="metadata-status-message">{statusMessage}</span>
+                )}
+                {lastSavedAt && (
                   <span>
                     Son kaydetme: {lastSavedAt.toLocaleTimeString("tr-TR", {
                       hour: "2-digit",
