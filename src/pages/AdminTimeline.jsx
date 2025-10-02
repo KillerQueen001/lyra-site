@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AdminTimelinePanel from "../components/AdminTimelinePanel";
 import StudioVideoPlayer from "../components/StudioVideoPlayer";
 import { videoLibrary } from "../data/videoLibrary";
-import { xrayDemo } from "../data/xrayDemo";
+import {
+  buildTimelineCastLibrary,
+  fetchCasts,
+  getPresetCasts,
+  mergeCasts,
+} from "../utils/castApi";
 import {
   loadVideoTimeline,
   saveVideoTimeline,
@@ -10,48 +15,8 @@ import {
 } from "../utils/timelineLocal";
 import "./AdminTimeline.css";
 
-const SAMPLE_CAST = [
-  {
-    id: "ayse",
-    name: "Ayşe G.",
-    description: "Sıcak ve samimi anlatım tonuyla girişleri taşır.",
-    role: "Anlatıcı",
-    photo: null,
-  },
-  {
-    id: "mert",
-    name: "Mert K.",
-    description: "Enerjik sahnelere tempo katan erkek sesi.",
-    role: "Enerjik erkek",
-    photo: null,
-  },
-  {
-    id: "hannah",
-    name: "Hannah L.",
-    description: "Genç karakterler için yumuşak ton.",
-    role: "Genç kadın",
-    photo: null,
-  },
-  {
-    id: "ali",
-    name: "Ali R.",
-    description: "Fragmanlarda derin bas tonuyla öne çıkar.",
-    role: "Tanıtım sesi",
-    photo: null,
-  },
-];
-
-const XRAY_CAST = xrayDemo.map((actor) => ({
-  id: actor.id,
-  name: actor.name,
-  description: actor.role,
-  role: actor.role,
-  photo: actor.photo,
-}));
-
-const DEFAULT_CAST_LIBRARY = Array.from(
-  new Map([...SAMPLE_CAST, ...XRAY_CAST].map((item) => [item.id, item])).values()
-);
+const PRESET_CASTS = getPresetCasts();
+const PRESET_CAST_LIBRARY = buildTimelineCastLibrary(PRESET_CASTS);
 
 const INITIAL_TIMELINE = [];
 
@@ -65,19 +30,61 @@ export default function AdminTimeline() {
   const defaultVideoId = VIDEO_OPTIONS[0]?.id || "sample";
   const [selectedVideoId, setSelectedVideoId] = useState(defaultVideoId);
   const [slots, setSlots] = useState(INITIAL_TIMELINE);
-  const [castLibrary, setCastLibrary] = useState(DEFAULT_CAST_LIBRARY);
+  const [baseCastLibrary, setBaseCastLibrary] = useState(PRESET_CAST_LIBRARY);
+  const [castLibrary, setCastLibrary] = useState(PRESET_CAST_LIBRARY);
   const [selectedCastId, setSelectedCastId] = useState(
-    DEFAULT_CAST_LIBRARY[0]?.id || null
+    PRESET_CAST_LIBRARY[0]?.id || null
   );
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [persistenceStatus, setPersistenceStatus] = useState(null);
+  const [serverStatus, setServerStatus] = useState("loading");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const remote = await fetchCasts();
+        if (!alive) return;
+        const merged = mergeCasts(remote, PRESET_CASTS);
+        setBaseCastLibrary(buildTimelineCastLibrary(merged));
+        setServerStatus("online");
+      } catch (error) {
+        console.warn("Cast kütüphanesi alınamadı:", error);
+        if (!alive) return;
+        setBaseCastLibrary(PRESET_CAST_LIBRARY);
+        setServerStatus("offline");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const mergeCastLibrary = useCallback(
+    (source) => {
+      const map = new Map();
+      baseCastLibrary.forEach((cast) => {
+        if (!cast) return;
+        const id = cast.id || cast.slug || cast.name;
+        if (!id) return;
+        map.set(id, { ...cast, id });
+      });
+      (Array.isArray(source) ? source : []).forEach((entry) => {
+        if (!entry) return;
+        const id = entry.id || entry.slug || entry.name;
+        if (!id) return;
+        const base = map.get(id) || {};
+        map.set(id, { ...base, ...entry, id });
+      });
+      return Array.from(map.values());
+    },
+    [baseCastLibrary]
+  );
 
   useEffect(() => {
     const stored = loadVideoTimeline(selectedVideoId);
     const nextSlots = stored?.slots?.length ? stored.slots : INITIAL_TIMELINE;
-    const nextCastLibrary = stored?.castLibrary?.length
-      ? stored.castLibrary
-      : DEFAULT_CAST_LIBRARY;
+    const nextCastLibrary = mergeCastLibrary(stored?.castLibrary)
     setSlots(nextSlots);
     setCastLibrary(nextCastLibrary);
     setLastSavedAt(stored?.updatedAt ? new Date(stored.updatedAt) : null);
@@ -92,9 +99,7 @@ export default function AdminTimeline() {
     syncVideoTimeline(selectedVideoId).then((synced) => {
       if (cancelled || !synced) return;
       setSlots(synced.slots || INITIAL_TIMELINE);
-      setCastLibrary(
-        synced.castLibrary?.length ? synced.castLibrary : DEFAULT_CAST_LIBRARY
-      );
+      setCastLibrary(mergeCastLibrary(synced.castLibrary));
       if (synced.updatedAt) {
         setLastSavedAt(new Date(synced.updatedAt));
       }
@@ -102,7 +107,11 @@ export default function AdminTimeline() {
     return () => {
       cancelled = true;
     };
-  }, [selectedVideoId]);
+  }, [selectedVideoId, mergeCastLibrary]);
+
+  useEffect(() => {
+    setCastLibrary((prev) => mergeCastLibrary(prev));
+  }, [mergeCastLibrary]);
 
   const castPalette = useMemo(
     () => castLibrary.map((voice) => voice.name),
@@ -226,6 +235,15 @@ export default function AdminTimeline() {
           <div className="admin-timeline-sidebar__header">
             <h2>Cast Kütüphanesi</h2>
             <p>Sürüklemek için kartları tutup timeline&apos;a bırakın.</p>
+            <span
+              className={`admin-timeline-sidebar__status admin-timeline-sidebar__status--${serverStatus}`}
+            >
+              {serverStatus === "online"
+                ? "Topluluk castleri senkron"
+                : serverStatus === "offline"
+                ? "Sunucuya ulaşılamadı, varsayılan kütüphane"
+                : "Cast listesi yükleniyor"}
+            </span>
           </div>
           <ul className="admin-timeline-cast-list">
             {castLibrary.map((voice) => (

@@ -159,6 +159,27 @@ export function getCastInitials(name) {
   return initials || "LY";
 }
 
+export function buildTimelineCastLibrary(casts = []) {
+  const map = new Map();
+  casts.forEach((item) => {
+    const cast = normalizeCastResponse(item);
+    const id = cast.slug || cast.id || `cast-${Math.random().toString(36).slice(2, 10)}`;
+    map.set(id, {
+      id,
+      slug: cast.slug,
+      name: cast.name,
+      description: cast.bio || cast.role,
+      role: cast.role,
+      photo: cast.image || null,
+      image: cast.image || null,
+      origin: cast.origin,
+      contacts: cast.contacts,
+      bio: cast.bio,
+    });
+  });
+  return Array.from(map.values());
+}
+
 function buildInstagramUrl(handle) {
   const value = safeString(handle);
   if (!value) return null;

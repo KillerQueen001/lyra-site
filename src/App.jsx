@@ -21,6 +21,7 @@ import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import VideoEditor from "./pages/VideoEditor";
 import AdminTimeline from "./pages/AdminTimeline";
+import AdminCast from "./pages/AdminCast";
 
 
 // Navbar component
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/watch/:id" element={<Watch />} />
         <Route path="/admin/video-editor" element={<VideoEditor />} />
         <Route path="/admin/timeline" element={<AdminTimeline />} />
+        <Route path="/admin/casts" element={<AdminCast />} />
       </Routes>
     </Router>
   );

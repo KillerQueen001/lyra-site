@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  createCast,
   describeCastContacts,
   fetchCasts,
   getCastInitials,
@@ -17,23 +16,9 @@ function buildInstagramHandle(value) {
 
 export default function Cast() {
   const presetCasts = useMemo(() => getPresetCasts(), []);
-  const [remoteCasts, setRemoteCasts] = useState([]);
   const [casts, setCasts] = useState(presetCasts);
   const [loading, setLoading] = useState(true);
   const [serverStatus, setServerStatus] = useState("loading");
-  const [formState, setFormState] = useState({
-    name: "",
-    role: "",
-    bio: "",
-    instagram: "",
-    email: "",
-    other: "",
-  });
-  const [imagePreview, setImagePreview] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-  const [submitSuccess, setSubmitSuccess] = useState("");
-  const imageInputRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -42,13 +27,11 @@ export default function Cast() {
       try {
         const remote = await fetchCasts();
         if (!alive) return;
-        setRemoteCasts(remote);
         setCasts(mergeCasts(remote, presetCasts));
         setServerStatus("online");
       } catch (error) {
         console.warn("Cast listesi alınamadı:", error);
         if (!alive) return;
-        setRemoteCasts([]);
         setCasts(presetCasts);
         setServerStatus("offline");
       } finally {
@@ -62,242 +45,33 @@ export default function Cast() {
     };
   }, [presetCasts]);
 
-  const handleInputChange = (event) => {
-    const { name, value } = event.target;
-    setFormState((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleImageChange = (event) => {
-    const file = event.target.files && event.target.files[0];
-    setSubmitError("");
-    setSubmitSuccess("");
-    if (!file) {
-      setImagePreview("");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      setSubmitError("Lütfen bir görsel dosyası seçin.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImagePreview(reader.result);
-      }
-    };
-    reader.onerror = () => {
-      setSubmitError("Görsel okunurken bir hata oluştu.");
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const resetForm = () => {
-    setFormState({
-      name: "",
-      role: "",
-      bio: "",
-      instagram: "",
-      email: "",
-      other: "",
-    });
-    setImagePreview("");
-    if (imageInputRef.current) {
-      imageInputRef.current.value = "";
-    }
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setSubmitError("");
-    setSubmitSuccess("");
-
-    if (!formState.name.trim()) {
-      setSubmitError("Lütfen cast için bir isim yazın.");
-      return;
-    }
-
-    if (serverStatus !== "online") {
-      setSubmitError("Cast kaydetmek için sunucuya bağlanılamıyor.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const payload = {
-        name: formState.name,
-        role: formState.role,
-        bio: formState.bio,
-        image: imagePreview,
-        contacts: {
-          instagram: formState.instagram.trim(),
-          email: formState.email.trim(),
-          other: formState.other.trim(),
-        },
-      };
-      const newCast = await createCast(payload);
-      setRemoteCasts((prevRemote) => {
-        const updatedRemote = [newCast, ...prevRemote];
-        setCasts(mergeCasts(updatedRemote, presetCasts));
-        return updatedRemote;
-      });
-      setSubmitSuccess("Cast kaydınız alındı! İnceleme sonrası yayınlanacaktır.");
-      resetForm();
-    } catch (error) {
-      console.error("Cast kaydedilemedi:", error);
-      setSubmitError(
-        error.message || "Cast kaydedilirken beklenmeyen bir hata oluştu."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="cast-page">
       <div className="cast-page__inner">
         <section className="cast-hero">
-          <div>
-            <h1>Cast Listesi</h1>
+          <div className="cast-hero__content">
+            <h1>Cast Kataloğu</h1>
             <p>
-              Lyra Records ekibine katılmak için oyuncu portföyünüzü paylaşın.
-              Aşağıdaki formu doldurarak yeni bir cast profili oluşturabilirsiniz.
+              Lyra Records prodüksiyonlarında birlikte çalıştığımız cast ekibini
+              keşfedin. Her karttan detay sayfasına giderek iletişim
+              bağlantılarına ulaşabilirsiniz.
             </p>
           </div>
-        </section>
-
-        <section className="cast-form">
-          <div className="cast-form__header">
-            <div>
-              <h2>Yeni Cast Ekleyin</h2>
-              <p>
-                İsim, rol, kısa tanıtım ve iletişim bilgilerinizi ekleyin. Fotoğraf
-                yüklerseniz kartınızda görünecektir.
-              </p>
-            </div>
-            {serverStatus === "online" ? (
-              <span className="cast-form__status cast-form__status--online">
-                Sunucu aktif
-              </span>
-            ) : serverStatus === "offline" ? (
-              <span className="cast-form__status cast-form__status--offline">
-                Sunucuya ulaşılamıyor
-              </span>
-            ) : (
-              <span className="cast-form__status">Sunucu kontrol ediliyor…</span>
-            )}
+          <div className={`cast-hero__status cast-hero__status--${serverStatus}`}>
+            {serverStatus === "online"
+              ? "Cast verileri güncel"
+              : serverStatus === "offline"
+              ? "Sunucuya ulaşılamadı"
+              : "Cast verileri yükleniyor"}
           </div>
-
-          {submitError && (
-            <div className="cast-form__alert cast-form__alert--error">
-              {submitError}
-            </div>
-          )}
-          {submitSuccess && (
-            <div className="cast-form__alert cast-form__alert--success">
-              {submitSuccess}
-            </div>
-          )}
-
-          <form className="cast-form__grid" onSubmit={handleSubmit}>
-            <label>
-              <span>İsim *</span>
-              <input
-                name="name"
-                value={formState.name}
-                onChange={handleInputChange}
-                placeholder="Örn. Elif Akay"
-                required
-              />
-            </label>
-            <label>
-              <span>Rol / Uzmanlık</span>
-              <input
-                name="role"
-                value={formState.role}
-                onChange={handleInputChange}
-                placeholder="Örn. Başrol oyuncusu, dublaj"
-              />
-            </label>
-            <label className="cast-form__full">
-              <span>Kısa Tanıtım</span>
-              <textarea
-                name="bio"
-                value={formState.bio}
-                onChange={handleInputChange}
-                placeholder="Deneyimlerinizi ve öne çıkan projelerinizi yazın."
-              />
-            </label>
-            <label>
-              <span>Instagram</span>
-              <input
-                name="instagram"
-                value={formState.instagram}
-                onChange={handleInputChange}
-                placeholder="@kullaniciadi"
-              />
-            </label>
-            <label>
-              <span>E-posta</span>
-              <input
-                type="email"
-                name="email"
-                value={formState.email}
-                onChange={handleInputChange}
-                placeholder="ornek@mail.com"
-              />
-            </label>
-            <label>
-              <span>Diğer iletişim</span>
-              <input
-                name="other"
-                value={formState.other}
-                onChange={handleInputChange}
-                placeholder="Web sitesi, telefon veya bağlantı"
-              />
-            </label>
-            <label className="cast-form__upload">
-              <span>Fotoğraf</span>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-              />
-              {imagePreview ? (
-                <div className="cast-form__preview">
-                  <img src={imagePreview} alt="Seçili cast görseli" />
-                </div>
-              ) : (
-                <p className="cast-form__hint">
-                  Yüklediğiniz görsel kart üzerinde ön izlenir.
-                </p>
-              )}
-            </label>
-            <div className="cast-form__actions">
-              <button type="submit" disabled={submitting || serverStatus !== "online"}>
-                {submitting ? "Gönderiliyor…" : "Cast oluştur"}
-              </button>
-              <button
-                type="button"
-                className="cast-form__secondary"
-                onClick={resetForm}
-                disabled={submitting}
-              >
-                Temizle
-              </button>
-            </div>
-          </form>
         </section>
 
         <section className="cast-list">
           <div className="cast-list__header">
-            <h2>Cast Kartları</h2>
+            <h2>Katalog</h2>
             <p>
               {loading
-                ? "Cast kartları yükleniyor…"
+                ? "Cast kartları hazırlanıyor…"
                 : `${casts.length} cast görüntüleniyor.`}
             </p>
           </div>
@@ -356,6 +130,16 @@ export default function Cast() {
               );
             })}
           </div>
+        </section>
+        <section className="cast-cta">
+          <h2>Cast ekibine katılmak mı istiyorsunuz?</h2>
+          <p>
+            Portföyünüzü eklemek veya bilgilerinizi güncellemek için admin
+            panelinden cast yönetimi ekranına başvurabilirsiniz.
+          </p>
+          <Link to="/admin/casts" className="cast-cta__link">
+            Admin Cast Yönetimine git
+          </Link>
         </section>
       </div>
     </div>

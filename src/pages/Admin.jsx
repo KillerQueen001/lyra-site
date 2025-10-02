@@ -9,6 +9,13 @@ const adminSections = [
       "Zaman çizelgesini, cast atamalarını ve video meta verilerini güncelleyin.",
     to: "/admin/video-editor",
   },
+    {
+    id: "cast-management",
+    title: "Cast Yönetimi",
+    description:
+      "Yeni cast profilleri ekleyin, katalogu yönetin ve iletişim bilgilerini güncel tutun.",
+    to: "/admin/casts",
+  },
   {
     id: "timeline",
     title: "Timeline Yönetimi",
