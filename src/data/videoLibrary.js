@@ -1,58 +1,84 @@
-const baseVideoLibrary = {
-  sample: {
-    title: "Örnek Video",
-    description: "Yerel olarak saklanan örnek MP4 dosyası.",
-    poster: "/videos/sample_poster.jpg",
-    groupId: "lyra-records",
-    files: {
-      single: "/videos/sample.mp4",
-      "480": "/videos/sample_480.mp4",
-      "720": "/videos/sample_720.mp4",
-      "1080": "/videos/sample_1080.mp4",
-    },
-  },
-  "portal2-bolum-1": {
-    title: "Portal 2 Türkçe Dublaj — Bölüm 1",
-    description: "Portal 2 projesinin birinci bölümü.",
-    stream:
-      "https://vz-14c17071-bad.b-cdn.net/c3c772ab-adf0-44cd-a170-1d2451de3b08/playlist.m3u8",
-    poster: "/posters/portal2-episode1.jpg",
-    groupId: "lyra-records",
-  },
-  "portal2-bolum-2": {
-    title: "Portal 2 Türkçe Dublaj — Bölüm 2",
-    description: "Portal 2 projesinin ikinci bölümü.",
-    stream:
-      "https://vz-14c17071-bad.b-cdn.net/c3c772ab-adf0-44cd-a170-1d2451de3b08/playlist.m3u8",
-    poster: "/posters/portal2-episode2.jpg",
-    groupId: "lyra-records",
-  },
-  "kus-kasabası": {
-    title: "Kuş Kasabası Türkçe Dublaj — Bölüm 1",
-    description: "Kuş Kasabası projesinin birinci bölümü.",
-    stream:
-      "https://vz-77a59fea-616.b-cdn.net/6d4563b3-484b-4821-aa2a-1208504190e9/playlist.m3u8",
-    poster: "/posters/portal2-episode2.jpg",
-    groupId: "lavinia-dublaj",
-  },
-  "dyinglight-bolum-1": {
-    title: "Dying Light Türkçe Dublaj — Bölüm 1",
-    description: "Dying Light projesine ait örnek bölüm.",
-    files: {
-      single: "/videos/sample.mp4",
-    },
-    poster: "/posters/dyinglight-episode1.jpg",
-    groupId: "lyra-records",
-  },
-};
+const globalObject =
+  (typeof globalThis !== "undefined" && globalThis) ||
+  (typeof window !== "undefined" && window) ||
+  {};
 
-export const videoLibrary = { ...baseVideoLibrary };
+var baseVideoLibrary = globalObject.__lyraBaseVideoLibrary;
+if (!baseVideoLibrary) {
+  baseVideoLibrary = {
+    sample: {
+      title: "Örnek Video",
+      description: "Yerel olarak saklanan örnek MP4 dosyası.",
+      poster: "/videos/sample_poster.jpg",
+      groupId: "lyra-records",
+      files: {
+        single: "/videos/sample.mp4",
+        "480": "/videos/sample_480.mp4",
+        "720": "/videos/sample_720.mp4",
+        "1080": "/videos/sample_1080.mp4",
+      },
+    },
+    "portal2-bolum-1": {
+      title: "Portal 2 Türkçe Dublaj — Bölüm 1",
+      description: "Portal 2 projesinin birinci bölümü.",
+      stream:
+        "https://vz-14c17071-bad.b-cdn.net/c3c772ab-adf0-44cd-a170-1d2451de3b08/playlist.m3u8",
+      poster: "/posters/portal2-episode1.jpg",
+      groupId: "lyra-records",
+    },
+    "portal2-bolum-2": {
+      title: "Portal 2 Türkçe Dublaj — Bölüm 2",
+      description: "Portal 2 projesinin ikinci bölümü.",
+      stream:
+        "https://vz-14c17071-bad.b-cdn.net/c3c772ab-adf0-44cd-a170-1d2451de3b08/playlist.m3u8",
+      poster: "/posters/portal2-episode2.jpg",
+      groupId: "lyra-records",
+    },
+    "kus-kasabası": {
+      title: "Kuş Kasabası Türkçe Dublaj — Bölüm 1",
+      description: "Kuş Kasabası projesinin birinci bölümü.",
+      stream:
+        "https://vz-77a59fea-616.b-cdn.net/6d4563b3-484b-4821-aa2a-1208504190e9/playlist.m3u8",
+      poster: "/posters/portal2-episode2.jpg",
+      groupId: "lavinia-dublaj",
+    },
+      "dyinglight-bolum-1": {
+      title: "Dying Light Türkçe Dublaj — Bölüm 1",
+      description: "Dying Light projesine ait örnek bölüm.",
+      files: {
+        single: "/videos/sample.mp4",
+      },
+      poster: "/posters/dyinglight-episode1.jpg",
+      groupId: "lyra-records",
+    },
+  };
+  globalObject.__lyraBaseVideoLibrary = baseVideoLibrary;
+}
 
-const subscribers = new Set();
-let cachedSnapshot = null;
+var videoLibrary = globalObject.__lyraVideoLibrary;
+if (!videoLibrary) {
+  videoLibrary = {};
+  Object.entries(baseVideoLibrary).forEach(([key, value]) => {
+    videoLibrary[key] = { ...value };
+  });
+  globalObject.__lyraVideoLibrary = videoLibrary;
+}
+
+var subscribers = globalObject.__lyraVideoLibrarySubscribers;
+if (!subscribers) {
+  subscribers = new Set();
+  globalObject.__lyraVideoLibrarySubscribers = subscribers;
+}
+
+var cachedSnapshot = globalObject.__lyraVideoLibrarySnapshot || null;
+
+function setSnapshot(snapshot) {
+  cachedSnapshot = snapshot;
+  globalObject.__lyraVideoLibrarySnapshot = snapshot;
+}
 
 function invalidateSnapshot() {
-  cachedSnapshot = null;
+  setSnapshot(null);
 }
 
 function safeString(value) {
@@ -185,7 +211,7 @@ export function getVideoLibrarySnapshot() {
     Object.entries(videoLibrary).forEach(([videoId, entry]) => {
       snapshot[videoId] = { ...entry };
     });
-    cachedSnapshot = snapshot;
+    setSnapshot(snapshot);
   }
   return cachedSnapshot;
 }
@@ -220,3 +246,5 @@ export function removeVideoEntry(id) {
   notifyVideoLibrarySubscribers();
   return true;
 }
+
+export { videoLibrary };
