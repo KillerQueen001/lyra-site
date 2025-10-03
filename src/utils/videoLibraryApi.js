@@ -29,6 +29,7 @@ function sanitizeVideoLibraryEntry(entry = {}) {
   const createdAt = safeString(entry.createdAt) || null;
   const updatedAt = safeString(entry.updatedAt) || createdAt;
   const origin = safeString(entry.origin) || (stream ? "remote" : "local");
+  const groupId = safeString(entry.groupId || entry.group);
   const base =
     entry.base && typeof entry.base === "object" ? { ...entry.base } : undefined;
 
@@ -44,6 +45,7 @@ function sanitizeVideoLibraryEntry(entry = {}) {
     updatedAt,
     origin,
   };
+  if (groupId) payload.groupId = groupId;
   if (files) payload.files = files;
   if (base) payload.base = base;
   return payload;
@@ -94,4 +96,38 @@ export function isValidHlsUrl(value) {
   const url = safeString(value);
   if (!url) return false;
   return /\.m3u8(\?.*)?$/i.test(url);
+}
+
+export async function deleteVideoLibraryEntry(videoId) {
+  const id = safeString(videoId);
+  if (!id) {
+    throw new Error("Geçersiz video ID");
+  }
+  const url = buildApiUrl(`/video-library/${encodeURIComponent(id)}`);
+  if (!url || typeof fetch === "undefined") {
+    throw new Error("Video kütüphanesi API kullanılabilir değil");
+  }
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  });
+  if (response.status === 204) {
+    return id;
+  }
+  if (!response.ok) {
+    let message = "";
+    try {
+      const data = await response.json();
+      message = data?.error || "";
+    } catch {
+      message = await response.text().catch(() => "");
+    }
+    throw new Error(message || `Video kaydı silinemedi: ${response.status}`);
+  }
+  try {
+    const data = await response.json();
+    return safeString(data?.id) || id;
+  } catch {
+    return id;
+  }
 }

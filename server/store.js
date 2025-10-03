@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { normalizeCastEntry } from "./casts.js";
 import { sanitizeVideoLibraryMap } from "./videoLibrary.js";
 import { sanitizeVideoDetailsMap } from "./videoDetails.js";
+import { sanitizeGroupMap } from "./groups.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,7 @@ const DEFAULT_STORE = {
   casts: [],
   videoLibrary: {},
   videoDetails: {},
+  groups: {},
 };
 
 export async function ensureStoreFile() {
@@ -32,6 +34,7 @@ function cloneDefaultStore() {
     casts: [],
     videoLibrary: {},
     videoDetails: {},
+    groups: {},
   };
 }
 
@@ -52,7 +55,8 @@ export async function readStore() {
     }
     const videoLibrary = sanitizeVideoLibraryMap(parsed.videoLibrary);
     const videoDetails = sanitizeVideoDetailsMap(parsed.videoDetails);
-    return { videos, casts, videoLibrary, videoDetails };
+    const groups = sanitizeGroupMap(parsed.groups);
+    return { videos, casts, videoLibrary, videoDetails, groups };
   } catch (error) {
     console.warn("timelineStore JSON parse failed, resetting file", error);
     await writeFile(DATA_PATH, JSON.stringify(DEFAULT_STORE, null, 2), "utf8");
@@ -72,9 +76,10 @@ export async function writeStore(store) {
   }
   const videoLibrary = sanitizeVideoLibraryMap(store?.videoLibrary);
   const videoDetails = sanitizeVideoDetailsMap(store?.videoDetails);
+  const groups = sanitizeGroupMap(store?.groups);
   await writeFile(
     DATA_PATH,
-    JSON.stringify({ videos, casts, videoLibrary, videoDetails }, null, 2),
+    JSON.stringify({ videos, casts, videoLibrary, videoDetails, groups }, null, 2),
     "utf8"
   );
 }

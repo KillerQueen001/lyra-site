@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVideoCatalog } from "../hooks/useVideoCatalog";
+import { useGroups } from "../hooks/useGroups";
 import {
   getAgeRatingLabel,
   resolveVideoSourceForCatalogEntry,
@@ -11,12 +12,20 @@ import "./Videos.css";
 
 export default function Videos() {
   const { catalog, isLoading } = useVideoCatalog();
+  const { groups: groupsById } = useGroups();
 
   const spotlight = useMemo(() => catalog.slice(0, 1)[0] || null, [catalog]);
   const rest = useMemo(() => (spotlight ? catalog.slice(1) : catalog), [
     catalog,
     spotlight,
   ]);
+    const groupNameById = useMemo(() => {
+    const map = {};
+    Object.entries(groupsById || {}).forEach(([groupId, entry]) => {
+      map[groupId] = entry?.name || groupId;
+    });
+    return map;
+  }, [groupsById]);
 
   return (
     <div className="videos-page">
@@ -53,12 +62,21 @@ export default function Videos() {
         <>
           {spotlight ? (
             <section className="videos-spotlight" aria-label="Öne çıkan video">
-              <VideoCard video={spotlight} spotlight />
+              <VideoCard
+                video={spotlight}
+                spotlight
+                groupName={groupNameById[spotlight.groupId] || ""}
+              />
             </section>
           ) : null}
           <div className="videos-grid" role="list">
             {rest.map((video, index) => (
-              <VideoCard key={video.id} video={video} index={index} />
+              <VideoCard
+                key={video.id}
+                video={video}
+                index={index}
+                groupName={groupNameById[video.groupId] || ""}
+              />
             ))}
           </div>
         </>
@@ -67,7 +85,7 @@ export default function Videos() {
   );
 }
 
-function VideoCard({ video, spotlight = false, index = 0 }) {
+function VideoCard({ video, spotlight = false, index = 0, groupName = "" }) {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const previewTimer = useRef(null);
@@ -239,6 +257,7 @@ function VideoCard({ video, spotlight = false, index = 0 }) {
         <p>{video.description || "Bu video için açıklama eklenmemiş."}</p>
         <div className="videos-card-meta">
           <span>{video.ageRatingLabel}</span>
+          {groupName ? <span>{groupName}</span> : null}
           {video.updatedAt ? (
             <span>
               Güncellendi: {new Date(video.updatedAt).toLocaleDateString("tr-TR")}

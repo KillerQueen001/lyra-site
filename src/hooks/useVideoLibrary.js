@@ -10,6 +10,11 @@ import {
   registerRemoteVideoEntries,
   subscribeToVideoLibrary,
 } from "../data/videoLibrary";
+import {
+  fetchVideoLibraryEntries,
+  deleteVideoLibraryEntry,
+} from "../utils/videoLibraryApi";
+import { removeVideoEntry } from "../data/videoLibrary";
 import { fetchVideoLibraryEntries } from "../utils/videoLibraryApi";
 
 let remoteLibraryPromise = null;
@@ -86,7 +91,16 @@ export function useVideoLibrary() {
       throw err;
     }
   }, []);
+  const removeEntry = useCallback(async (videoId) => {
+    const id = typeof videoId === "string" ? videoId.trim() : "";
+    if (!id) {
+      throw new Error("Silinecek video bulunamadı.");
+    }
+    await deleteVideoLibraryEntry(id);
+    removeVideoEntry(id);
+  }, []);
 
+  return { library, status, error, reload, removeEntry };
   return { library, status, error, reload };
 }
 

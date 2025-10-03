@@ -129,7 +129,8 @@
 }
 
 .admin-video__form-grid input,
-.admin-video__form-grid textarea {
+.admin-video__form-grid textarea,
+.admin-video__form-grid select {
   width: 100%;
   padding: 12px 14px;
   border-radius: 14px;
@@ -150,6 +151,26 @@
   font-size: 0.75rem;
   text-transform: none;
   letter-spacing: 0;
+}
+
+.admin-video__form-grid small button,
+.admin-video__alert button {
+  margin-left: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(154, 128, 255, 0.4);
+  background: rgba(34, 28, 66, 0.6);
+  color: #f1efff;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.admin-video__form-grid small button:disabled,
+.admin-video__alert button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .admin-video__span-2 {
@@ -240,7 +261,7 @@
 .admin-video__table-head,
 .admin-video__table-row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 2fr 0.8fr;
+  grid-template-columns: 1.3fr 0.9fr 1fr 2fr 0.8fr 0.6fr;
   gap: 18px;
   align-items: center;
 }
@@ -281,14 +302,42 @@
   word-break: break-all;
 }
 
+.admin-video__actions-col {
+  text-align: right;
+}
+
+.admin-video__actions-cell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-video__actions-cell button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 120, 155, 0.45);
+  background: rgba(80, 28, 42, 0.6);
+  color: #ffd9e3;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.admin-video__actions-cell button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 860px) {
   .admin-video__table-head,
   .admin-video__table-row {
     grid-template-columns: 1.2fr 1fr;
     grid-template-areas:
       "title title"
+      "group group"
       "id stream"
-      "date stream";
+      "date stream"
+      "actions actions";
   }
 
   .admin-video__table-head span:nth-child(1),
@@ -303,11 +352,21 @@
 
   .admin-video__table-head span:nth-child(3),
   .admin-video__table-row span:nth-child(3) {
-    grid-area: stream;
+    grid-area: group;
   }
 
   .admin-video__table-head span:nth-child(4),
   .admin-video__table-row span:nth-child(4) {
+    grid-area: stream;
+  }
+
+  .admin-video__table-head span:nth-child(5),
+  .admin-video__table-row span:nth-child(5) {
     grid-area: date;
+  }
+  .admin-video__table-head span:nth-child(6),
+  .admin-video__table-row span:nth-child(6) {
+    grid-area: actions;
+    justify-self: flex-end;
   }
 }

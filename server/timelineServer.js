@@ -6,11 +6,13 @@ import { createCastEntry } from "./casts.js";
 import {
   listVideoLibraryEntries,
   createVideoLibraryEntry,
+  removeVideoLibraryEntry,
 } from "./videoLibrary.js";
 import {
   normalizeVideoDetailsEntry,
   upsertVideoDetailsEntry,
 } from "./videoDetails.js";
+import { listGroupEntries, createGroupEntry } from "./groups.js";
 
 const PORT = Number(
   (typeof globalThis !== "undefined" &&
@@ -24,7 +26,7 @@ function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   });
   res.end(JSON.stringify(data));
@@ -102,6 +104,7 @@ const server = createServer(async (req, res) => {
           casts: [...store.casts, newCast],
           videoLibrary: store.videoLibrary,
           videoDetails: store.videoDetails,
+          groups: store.groups,
         });
         sendJson(res, 201, newCast);
       } catch (error) {
@@ -142,12 +145,17 @@ const server = createServer(async (req, res) => {
         const payload = await readJsonBody(req);
         const store = await readStore();
         const existing = store.videoLibrary || {};
-        const { id, entry } = createVideoLibraryEntry(payload, existing);
+        const { id, entry } = createVideoLibraryEntry(
+          payload,
+          existing,
+          store.groups
+        );
         await writeStore({
           videos: store.videos,
           casts: store.casts,
           videoLibrary: { ...existing, [id]: entry },
           videoDetails: store.videoDetails,
+          groups: store.groups,
         });
         sendJson(res, 201, { id, ...entry });
       } catch (error) {
@@ -157,6 +165,43 @@ const server = createServer(async (req, res) => {
           status === 400 || status === 409
             ? error.message || "Geçersiz video verisi"
             : "Video kaydı oluşturulamadı";
+        sendJson(res, status, { error: message });
+      }
+      return;
+    }
+
+    methodNotAllowed(res);
+    return;
+  }
+
+  const libraryMatch = url.pathname.match(/^\/api\/video-library\/(.+)$/);
+  if (libraryMatch) {
+    const videoId = decodeURIComponent(libraryMatch[1]);
+
+    if (req.method === "DELETE") {
+      try {
+        const store = await readStore();
+        const existing = store.videoLibrary || {};
+        const { id, map } = removeVideoLibraryEntry(videoId, existing);
+        const nextDetails = { ...store.videoDetails };
+        if (nextDetails[id]) {
+          delete nextDetails[id];
+        }
+        await writeStore({
+          videos: store.videos,
+          casts: store.casts,
+          videoLibrary: map,
+          videoDetails: nextDetails,
+          groups: store.groups,
+        });
+        sendJson(res, 200, { id });
+      } catch (error) {
+        console.error("Video kütüphanesi silinirken hata", error);
+        const status = error?.statusCode ?? 500;
+        const message =
+          status === 404
+            ? error.message || "Video bulunamadı"
+            : "Video kaydı silinemedi";
         sendJson(res, status, { error: message });
       }
       return;
@@ -209,6 +254,7 @@ const server = createServer(async (req, res) => {
             ...store.videoDetails,
             [videoId]: updatedEntry,
           },
+          groups: store.groups,
         });
         sendJson(res, 200, updatedEntry);
       } catch (error) {
@@ -265,6 +311,7 @@ const server = createServer(async (req, res) => {
           casts: store.casts,
           videoLibrary: store.videoLibrary,
           videoDetails: store.videoDetails,
+          groups: store.groups,
         });
         sendJson(res, 200, normalized);
       } catch (error) {
@@ -280,11 +327,58 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/groups") {
+    if (req.method === "GET") {
+      const store = await readStore();
+      const groups = listGroupEntries(store.groups).sort((a, b) => {
+        const timeA = a.updatedAt || a.createdAt || "";
+        const timeB = b.updatedAt || b.createdAt || "";
+        if (timeA && timeB) {
+          return new Date(timeB).getTime() - new Date(timeA).getTime();
+        }
+        if (timeA) return -1;
+        if (timeB) return 1;
+        return a.name.localeCompare(b.name, "tr", { sensitivity: "base" });
+      });
+      sendJson(res, 200, { groups });
+      return;
+    }
+
+    if (req.method === "POST") {
+      try {
+        const payload = await readJsonBody(req);
+        const store = await readStore();
+        const existing = store.groups || {};
+        const { id, entry } = createGroupEntry(payload, existing);
+        await writeStore({
+          videos: store.videos,
+          casts: store.casts,
+          videoLibrary: store.videoLibrary,
+          videoDetails: store.videoDetails,
+          groups: { ...existing, [id]: entry },
+        });
+        sendJson(res, 201, { id, ...entry });
+      } catch (error) {
+        console.error("Grup kaydedilirken hata", error);
+        const status = error?.statusCode ?? 500;
+        const message =
+          status === 400 || status === 409
+            ? error.message || "Geçersiz grup verisi"
+            : "Grup kaydı oluşturulamadı";
+        sendJson(res, status, { error: message });
+      }
+      return;
+    }
+
+    methodNotAllowed(res);
+    return;
+  }
+
   notFound(res);
 });
 
 server.listen(PORT, () => {
   console.log(
-    `Timeline server listening on http://localhost:${PORT}/api (timelines, casts, video-library, video-details)`
+    `Timeline server listening on http://localhost:${PORT}/api (timelines, casts, video-library, video-details, groups)`
   );
 });

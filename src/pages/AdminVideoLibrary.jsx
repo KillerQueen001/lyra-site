@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useVideoLibrary } from "../hooks/useVideoLibrary";
+import { useGroups } from "../hooks/useGroups";
 import {
   createVideoLibraryEntry,
   isValidHlsUrl,
@@ -13,6 +14,7 @@ const EMPTY_FORM = {
   stream: "",
   description: "",
   poster: "",
+  groupId: "",
 };
 
 function formatStatus(status) {
@@ -47,12 +49,21 @@ export default function AdminVideoLibrary() {
     status: libraryStatus,
     error: libraryError,
     reload: reloadLibrary,
+    removeEntry,
   } = useVideoLibrary();
+  const {
+    list: groupOptions,
+    status: groupsStatus,
+    error: groupsError,
+    reload: reloadGroups,
+  } = useGroups();
   const [form, setForm] = useState(EMPTY_FORM);
   const [isIdDirty, setIsIdDirty] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
+  const [deletingId, setDeletingId] = useState("");
+  const isGroupsLoading = groupsStatus === "idle" || groupsStatus === "loading";
 
   const entries = useMemo(() => {
     return Object.entries(library || {}).map(([id, entry]) => ({
@@ -62,8 +73,17 @@ export default function AdminVideoLibrary() {
       poster: entry?.poster || "",
       origin: entry?.origin || "yerel",
       updatedAt: entry?.updatedAt || entry?.createdAt || null,
+      groupId: entry?.groupId || "",
     }));
   }, [library]);
+
+  const groupNameById = useMemo(() => {
+    const map = {};
+    groupOptions.forEach((group) => {
+      map[group.id] = group.name;
+    });
+    return map;
+  }, [groupOptions]);
 
   const sortedEntries = useMemo(() => {
     return [...entries].sort((a, b) => {
@@ -115,6 +135,7 @@ export default function AdminVideoLibrary() {
     const description = form.description.trim();
     const poster = form.poster.trim();
     const stream = form.stream.trim();
+    const groupId = form.groupId.trim();
     let videoId = form.videoId.trim();
 
     if (!videoId) {
@@ -142,6 +163,13 @@ export default function AdminVideoLibrary() {
       return;
     }
 
+    if (groupId && !groupOptions.some((group) => group.id === groupId)) {
+      setSubmitError(
+        "Seçilen grup bulunamadı. Listeyi yenileyin ve tekrar deneyin."
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       await createVideoLibraryEntry({
@@ -150,6 +178,7 @@ export default function AdminVideoLibrary() {
         description,
         stream,
         poster,
+        groupId: groupId || undefined,
       });
       await reloadLibrary();
       setSubmitSuccess("Video kaydı oluşturuldu ve kütüphane güncellendi.");
@@ -158,6 +187,31 @@ export default function AdminVideoLibrary() {
       setSubmitError(error.message || "Video kaydı oluşturulamadı.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (videoId, title) => {
+    const id = typeof videoId === "string" ? videoId.trim() : "";
+    if (!id) return;
+    const promptMessage =
+      (title ? `${title} video` : "Bu video") +
+      " kaydını silmek istediğinize emin misiniz?";
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(promptMessage);
+      if (!confirmed) {
+        return;
+      }
+    }
+    setSubmitError("");
+    setSubmitSuccess("");
+    setDeletingId(id);
+    try {
+      await removeEntry(id);
+      setSubmitSuccess("Video kaydı silindi.");
+    } catch (error) {
+      setSubmitError(error.message || "Video silinemedi.");
+    } finally {
+      setDeletingId("");
     }
   };
 
@@ -226,6 +280,36 @@ export default function AdminVideoLibrary() {
                 />
                 <small>ID yalnızca küçük harf ve tire içerebilir.</small>
               </label>
+              <label>
+                <span>Grup</span>
+                <select
+                  name="groupId"
+                  value={form.groupId}
+                  onChange={handleInputChange}
+                  disabled={isGroupsLoading || submitting}
+                >
+                  <option value="">(isteğe bağlı) Grup seçin</option>
+                  {groupOptions.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  {isGroupsLoading
+                    ? "Grup listesi yükleniyor..."
+                    : groupsError
+                    ? "Gruplar alınamadı."
+                    : `${groupOptions.length} grup bulundu.`}
+                  <button
+                    type="button"
+                    onClick={() => reloadGroups().catch(() => {})}
+                    disabled={submitting || isGroupsLoading}
+                  >
+                    Yenile
+                  </button>
+                </small>
+              </label>
               <label className="admin-video__span-2">
                 <span>HLS Akış Bağlantısı</span>
                 <input
@@ -267,6 +351,18 @@ export default function AdminVideoLibrary() {
                 {submitSuccess}
               </div>
             ) : null}
+            {groupsError ? (
+              <div className="admin-video__alert admin-video__alert--error">
+                Grup listesi yüklenirken hata oluştu.
+                <button
+                  type="button"
+                  onClick={() => reloadGroups().catch(() => {})}
+                  disabled={isGroupsLoading || submitting}
+                >
+                  Tekrar dene
+                </button>
+              </div>
+            ) : null}
 
             <div className="admin-video__actions">
               <button type="submit" disabled={submitting}>
@@ -296,8 +392,12 @@ export default function AdminVideoLibrary() {
               <div className="admin-video__table-head" role="row">
                 <span role="columnheader">Başlık</span>
                 <span role="columnheader">ID</span>
+                <span role="columnheader">Grup</span>
                 <span role="columnheader">Kaynak</span>
                 <span role="columnheader">Güncelleme</span>
+                <span role="columnheader" className="admin-video__actions-col">
+                  İşlemler
+                </span>
               </div>
               <div className="admin-video__table-body">
                 {sortedEntries.map((entry) => (
@@ -307,6 +407,11 @@ export default function AdminVideoLibrary() {
                     </span>
                     <span role="cell">
                       <code>{entry.id}</code>
+                    </span>
+                    <span role="cell">
+                      {entry.groupId
+                        ? groupNameById[entry.groupId] || entry.groupId
+                        : "—"}
                     </span>
                     <span role="cell" className="admin-video__cell-stream">
                       {entry.stream ? (
@@ -318,6 +423,15 @@ export default function AdminVideoLibrary() {
                       )}
                     </span>
                     <span role="cell">{formatDate(entry.updatedAt)}</span>
+                    <span role="cell" className="admin-video__actions-cell">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(entry.id, entry.title)}
+                        disabled={deletingId === entry.id || submitting}
+                      >
+                        {deletingId === entry.id ? "Siliniyor..." : "Sil"}
+                      </button>
+                    </span>
                   </div>
                 ))}
               </div>

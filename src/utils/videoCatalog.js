@@ -47,6 +47,7 @@ function mergeVideoEntry(videoId, detailEntry = {}, baseEntry = {}) {
     baseEntry.files && typeof baseEntry.files === "object"
       ? { ...baseEntry.files }
       : null;
+  const groupId = safeText(baseEntry.groupId || detailEntry.groupId);
 
   return {
     id: videoId,
@@ -59,6 +60,7 @@ function mergeVideoEntry(videoId, detailEntry = {}, baseEntry = {}) {
     stream,
     files,
     base: baseEntry,
+    groupId: groupId || "",
     updatedAt: detailEntry.updatedAt || null,
     hasCustomDetails: Boolean(
       detailEntry.title || detailEntry.description || detailEntry.ageRating

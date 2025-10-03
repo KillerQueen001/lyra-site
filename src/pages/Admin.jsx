@@ -17,6 +17,13 @@ const adminSections = [
     to: "/admin/casts",
   },
   {
+    id: "group-management",
+    title: "Grup Oluşturma",
+    description:
+      "Prodüksiyon grupları için banner ve logo bilgilerini yönetin, yeni gruplar ekleyin.",
+    to: "/admin/groups",
+  },
+  {
     id: "video-library",
     title: "Video Ekleme",
     description:

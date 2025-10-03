@@ -24,6 +24,7 @@ export function normalizeVideoLibraryEntry(id, entry = {}) {
   const createdAt = safeString(entry.createdAt);
   const updatedAt = safeString(entry.updatedAt);
   const origin = safeString(entry.origin) || "remote";
+  const groupId = safeString(entry.groupId || entry.group);
   const files = normalizeVideoFiles(entry.files);
   const payload = { title: baseTitle || id, origin };
   if (description) payload.description = description;
@@ -34,6 +35,7 @@ export function normalizeVideoLibraryEntry(id, entry = {}) {
   if (Object.keys(files).length) payload.files = files;
   if (createdAt) payload.createdAt = createdAt;
   if (updatedAt) payload.updatedAt = updatedAt;
+  if (groupId) payload.groupId = groupId;
   return payload;
 }
 
@@ -57,7 +59,11 @@ export function listVideoLibraryEntries(map = {}) {
   return list;
 }
 
-export function createVideoLibraryEntry(payload = {}, existingMap = {}) {
+export function createVideoLibraryEntry(
+  payload = {},
+  existingMap = {},
+  existingGroups = {}
+) {
   const title = safeString(payload.title);
   const stream = safeString(payload.stream);
   if (!stream) {
@@ -87,6 +93,12 @@ export function createVideoLibraryEntry(payload = {}, existingMap = {}) {
   const url = safeString(payload.url);
   const defaultQuality = safeString(payload.defaultQuality);
   const files = normalizeVideoFiles(payload.files);
+  const groupId = safeString(payload.groupId || payload.group);
+  if (groupId && !existingGroups?.[groupId]) {
+    const error = new Error("Seçilen grup bulunamadı");
+    error.statusCode = 400;
+    throw error;
+  }
   const timestamp = new Date().toISOString();
   const entry = normalizeVideoLibraryEntry(id, {
     title: title || id,
@@ -99,6 +111,25 @@ export function createVideoLibraryEntry(payload = {}, existingMap = {}) {
     createdAt: timestamp,
     updatedAt: timestamp,
     origin: "remote",
+    groupId,
   });
   return { id, entry };
+}
+
+export function removeVideoLibraryEntry(videoId, existingMap = {}) {
+  const id = safeString(videoId);
+  if (!id) {
+    const error = new Error("Silinecek video ID'si belirtilmedi");
+    error.statusCode = 404;
+    throw error;
+  }
+  const map = existingMap && typeof existingMap === "object" ? existingMap : {};
+  if (!map[id]) {
+    const error = new Error("Video kaydı bulunamadı");
+    error.statusCode = 404;
+    throw error;
+  }
+  const next = { ...map };
+  delete next[id];
+  return { id, map: next };
 }

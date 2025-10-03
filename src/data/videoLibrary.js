@@ -3,6 +3,7 @@ const baseVideoLibrary = {
     title: "Örnek Video",
     description: "Yerel olarak saklanan örnek MP4 dosyası.",
     poster: "/videos/sample_poster.jpg",
+    groupId: "lyra-records",
     files: {
       single: "/videos/sample.mp4",
       "480": "/videos/sample_480.mp4",
@@ -16,6 +17,7 @@ const baseVideoLibrary = {
     stream:
       "https://vz-14c17071-bad.b-cdn.net/c3c772ab-adf0-44cd-a170-1d2451de3b08/playlist.m3u8",
     poster: "/posters/portal2-episode1.jpg",
+    groupId: "lyra-records",
   },
   "portal2-bolum-2": {
     title: "Portal 2 Türkçe Dublaj — Bölüm 2",
@@ -23,6 +25,7 @@ const baseVideoLibrary = {
     stream:
       "https://vz-14c17071-bad.b-cdn.net/c3c772ab-adf0-44cd-a170-1d2451de3b08/playlist.m3u8",
     poster: "/posters/portal2-episode2.jpg",
+    groupId: "lyra-records",
   },
   "kus-kasabası": {
     title: "Kuş Kasabası Türkçe Dublaj — Bölüm 1",
@@ -30,6 +33,7 @@ const baseVideoLibrary = {
     stream:
       "https://vz-77a59fea-616.b-cdn.net/6d4563b3-484b-4821-aa2a-1208504190e9/playlist.m3u8",
     poster: "/posters/portal2-episode2.jpg",
+    groupId: "lavinia-dublaj",
   },
   "dyinglight-bolum-1": {
     title: "Dying Light Türkçe Dublaj — Bölüm 1",
@@ -38,12 +42,18 @@ const baseVideoLibrary = {
       single: "/videos/sample.mp4",
     },
     poster: "/posters/dyinglight-episode1.jpg",
+    groupId: "lyra-records",
   },
 };
 
 export const videoLibrary = { ...baseVideoLibrary };
 
 const subscribers = new Set();
+let cachedSnapshot = null;
+
+function invalidateSnapshot() {
+  cachedSnapshot = null;
+}
 
 function safeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -78,6 +88,8 @@ function normalizeVideoEntryInput(entry = {}) {
   if (poster) data.poster = poster;
   const defaultQuality = safeString(entry.defaultQuality);
   if (defaultQuality) data.defaultQuality = defaultQuality;
+  const groupId = safeString(entry.groupId || entry.group);
+  if (groupId) data.groupId = groupId;
   const files = normalizeFiles(entry.files);
   if (files) data.files = files;
   const createdAt = safeString(entry.createdAt);
@@ -129,6 +141,7 @@ function applyNormalizedEntry(normalized) {
   });
   if (changed) {
     videoLibrary[id] = next;
+    invalidateSnapshot();
   }
   return changed;
 }
@@ -167,11 +180,14 @@ export function getVideoEntry(id) {
 }
 
 export function getVideoLibrarySnapshot() {
-  const snapshot = {};
-  Object.entries(videoLibrary).forEach(([videoId, entry]) => {
-    snapshot[videoId] = { ...entry };
-  });
-  return snapshot;
+  if (!cachedSnapshot) {
+    const snapshot = {};
+    Object.entries(videoLibrary).forEach(([videoId, entry]) => {
+      snapshot[videoId] = { ...entry };
+    });
+    cachedSnapshot = snapshot;
+  }
+  return cachedSnapshot;
 }
 
 export function subscribeToVideoLibrary(callback) {
@@ -191,5 +207,16 @@ export function resetVideoLibrary() {
   Object.entries(baseVideoLibrary).forEach(([key, value]) => {
     videoLibrary[key] = { ...value };
   });
+  invalidateSnapshot();
   notifyVideoLibrarySubscribers();
+}
+
+export function removeVideoEntry(id) {
+  const key = safeString(id);
+  if (!key) return false;
+  if (!videoLibrary[key]) return false;
+  delete videoLibrary[key];
+  invalidateSnapshot();
+  notifyVideoLibrarySubscribers();
+  return true;
 }
