@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useGroups } from "../hooks/useGroups";
 import { useVideoLibrary } from "../hooks/useVideoLibrary";
 import { createGroup, isPngUrl } from "../utils/groupsApi";
 import { slugify } from "../utils/slugify";
+import {uploadAsset} from "../utils/uploadApi";
 import "./AdminGroups.css";
 
 const EMPTY_FORM = {
@@ -40,9 +41,16 @@ export default function AdminGroups() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
-
+  const [assetUploads, setAssetUploads] = useState({
+    banner: { status: "idle", message: "" },
+    logo: { status: "idle", message: "" },
+  });
+  const bannerInputRef = useRef(null);
+  const logoInputRef = useRef(null);
   const isLoading = status === "idle" || status === "loading";
-
+  const isUploadingAsset =
+    assetUploads.banner.status === "uploading" ||
+    assetUploads.logo.status === "uploading";
   const videoCounts = useMemo(() => {
     const counts = {};
     Object.entries(library || {}).forEach(([, entry]) => {
@@ -81,6 +89,54 @@ export default function AdminGroups() {
     setIsIdDirty(false);
     setSubmitError("");
     setSubmitSuccess("");
+    setAssetUploads({
+      banner: { status: "idle", message: "" },
+      logo: { status: "idle", message: "" },
+    });
+  };
+
+  const updateAssetStatus = (field, status, message = "") => {
+    setAssetUploads((prev) => ({
+      ...prev,
+      [field]: { status, message },
+    }));
+  };
+
+  const getGroupSlug = () => {
+    const source = form.groupId.trim() || form.name.trim();
+    const slug = slugify(source);
+    if (slug) return slug;
+    return `group-${Date.now().toString(36)}`;
+  };
+
+  const handleAssetUpload = async (field, fileInput) => {
+    const file = fileInput?.files?.[0];
+    if (!file) return;
+    fileInput.value = "";
+    const fileName = file?.name || `${field}.png`;
+    const lowerName = fileName.toLowerCase();
+    if (!lowerName.endsWith(".png") && file.type !== "image/png" && file.type !== "image/x-png") {
+      updateAssetStatus(field, "error", "Lütfen PNG formatında bir dosya seçin.");
+      return;
+    }
+    updateAssetStatus(field, "uploading", "Yükleniyor…");
+    try {
+      const slug = getGroupSlug();
+      const result = await uploadAsset(file, {
+        folder: `groups/${slug}`,
+        fileName: `${field}-${Date.now().toString(36)}`,
+        extension: "png",
+        contentType: "image/png",
+      });
+      setForm((prev) => ({
+        ...prev,
+        [field]: result.url || prev[field],
+      }));
+      updateAssetStatus(field, "success", "Bunny CDN'e yüklendi.");
+      setSubmitError("");
+    } catch (error) {
+      updateAssetStatus(field, "error", error.message || "Dosya yüklenemedi.");
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -133,6 +189,10 @@ export default function AdminGroups() {
       setSubmitError("Logo adresi PNG formatında olmalıdır.");
       return;
     }
+    if (isUploadingAsset) {
+      setSubmitError("Lütfen dosya yüklemeleri tamamlanana kadar bekleyin.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -169,7 +229,7 @@ export default function AdminGroups() {
             <button
               type="button"
               onClick={() => reload().catch(() => {})}
-              disabled={isLoading || submitting}
+              disabled={isLoading || submitting || isUploadingAsset}
             >
               Yenile
             </button>
@@ -182,7 +242,7 @@ export default function AdminGroups() {
             <button
               type="button"
               onClick={() => reload().catch(() => {})}
-              disabled={isLoading || submitting}
+              disabled={isLoading || submitting || isUploadingAsset}
             >
               Tekrar dene
             </button>
@@ -239,6 +299,28 @@ export default function AdminGroups() {
                   onChange={handleInputChange}
                   placeholder="https://.../banner.png"
                 />
+                <small className="admin-groups__upload">
+                  <button
+                    type="button"
+                    onClick={() => bannerInputRef.current?.click()}
+                    disabled={isUploadingAsset || submitting}
+                  >
+                    Bunny'e yükle
+                  </button>
+                  <input
+                    ref={bannerInputRef}
+                    type="file"
+                    accept="image/png"
+                    className="admin-groups__upload-input"
+                    onChange={(event) => handleAssetUpload("banner", event.target)}
+                  />
+                  <span
+                    className={`admin-groups__upload-status admin-groups__upload-status--${assetUploads.banner.status}`}
+                  >
+                    {assetUploads.banner.message ||
+                      "PNG dosyanızı Bunny Storage'a yükleyebilirsiniz."}
+                  </span>
+                </small>
               </label>
               <label>
                 <span>Logo (PNG)</span>
@@ -248,6 +330,28 @@ export default function AdminGroups() {
                   onChange={handleInputChange}
                   placeholder="https://.../logo.png"
                 />
+                <small className="admin-groups__upload">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={isUploadingAsset || submitting}
+                  >
+                    Bunny'e yükle
+                  </button>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png"
+                    className="admin-groups__upload-input"
+                    onChange={(event) => handleAssetUpload("logo", event.target)}
+                  />
+                  <span
+                    className={`admin-groups__upload-status admin-groups__upload-status--${assetUploads.logo.status}`}
+                  >
+                    {assetUploads.logo.message ||
+                      "Logo için PNG dosyası yüklemek üzere butona tıklayın."}
+                  </span>
+                </small>
               </label>
             </div>
 
@@ -263,14 +367,14 @@ export default function AdminGroups() {
             ) : null}
 
             <div className="admin-groups__actions">
-              <button type="submit" disabled={submitting}>
+              <button type="submit" disabled={submitting || isUploadingAsset}>
                 {submitting ? "Kaydediliyor..." : "Grup Ekle"}
               </button>
               <button
                 type="button"
                 className="admin-groups__secondary"
                 onClick={resetForm}
-                disabled={submitting}
+                disabled={submitting || isUploadingAsset}
               >
                 Temizle
               </button>

@@ -1,6 +1,7 @@
 /* eslint-env node */
 
 import { createServer } from "http";
+import { Buffer } from "node:buffer"
 import { readStore, writeStore } from "./store.js";
 import { createCastEntry } from "./casts.js";
 import {
@@ -13,6 +14,14 @@ import {
   upsertVideoDetailsEntry,
 } from "./videoDetails.js";
 import { listGroupEntries, createGroupEntry } from "./groups.js";
+import {
+  getBunnyStorageStatus,
+  uploadBufferToBunny,
+  deleteFromBunny,
+  createStoragePath,
+  BunnyStorageError,
+} from "./bunnyStorage.js";
+import { safeString } from "./utils.js";
 
 const PORT = Number(
   (typeof globalThis !== "undefined" &&
@@ -65,6 +74,40 @@ async function readJsonBody(req) {
   });
 }
 
+function extractBase64Payload(value) {
+  const raw = safeString(value);
+  if (!raw) return "";
+  const commaIndex = raw.indexOf(",");
+  if (commaIndex >= 0) {
+    return raw.slice(commaIndex + 1);
+  }
+  return raw;
+}
+
+const MIME_EXTENSION_MAP = new Map([
+  ["image/png", "png"],
+  ["image/x-png", "png"],
+  ["image/jpeg", "jpg"],
+  ["image/jpg", "jpg"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+  ["image/svg+xml", "svg"],
+]);
+
+function guessExtension(contentType, fileName) {
+  const content = safeString(contentType).toLowerCase();
+  if (content && MIME_EXTENSION_MAP.has(content)) {
+    return MIME_EXTENSION_MAP.get(content) || "";
+  }
+  const name = safeString(fileName).toLowerCase();
+  if (!name) return "";
+  const parts = name.split(".");
+  if (parts.length > 1) {
+    return parts.pop() || "";
+  }
+  return "";
+}
+
 function normalizeTimelineEntry(entry) {
   const slots = Array.isArray(entry?.slots) ? entry.slots : [];
   const castLibrary = Array.isArray(entry?.castLibrary)
@@ -86,6 +129,90 @@ const server = createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === "/api/uploads/status") {
+    if (req.method === "GET") {
+      const status = getBunnyStorageStatus();
+      sendJson(res, 200, status);
+      return;
+    }
+    methodNotAllowed(res);
+    return;
+  }
+
+  if (url.pathname === "/api/uploads") {
+    if (req.method === "POST") {
+      try {
+        const payload = await readJsonBody(req);
+        const base64 = extractBase64Payload(payload?.data);
+        if (!base64) {
+          throw new BunnyStorageError("Yüklenecek dosya verisi bulunamadı", 400);
+        }
+        let buffer;
+        try {
+          buffer = Buffer.from(base64, "base64");
+        } catch {
+          throw new BunnyStorageError("Dosya verisi çözümlenemedi", 400);
+        }
+        if (!buffer || !buffer.length) {
+          throw new BunnyStorageError("Geçerli dosya verisi bulunamadı", 400);
+        }
+        const folder = safeString(payload?.folder);
+        const fileName = safeString(payload?.fileName);
+        const explicitPath = safeString(payload?.path);
+        const extension = safeString(payload?.extension) ||
+          guessExtension(payload?.contentType, fileName);
+        const uploadPath = explicitPath
+          ? explicitPath
+          : createStoragePath({
+              folder: folder || undefined,
+              fileName: fileName || undefined,
+              extension: extension || undefined,
+            });
+        const result = await uploadBufferToBunny(
+          uploadPath,
+          buffer,
+          safeString(payload?.contentType) || "application/octet-stream"
+        );
+        sendJson(res, 201, result);
+      } catch (error) {
+        console.error("Dosya yüklenirken hata", error);
+        if (error instanceof BunnyStorageError) {
+          sendJson(res, error.statusCode ?? 500, { error: error.message });
+          return;
+        }
+        sendJson(res, 500, { error: "Dosya yüklenemedi" });
+      }
+      return;
+    }
+
+    if (req.method === "DELETE") {
+      try {
+        const target = safeString(url.searchParams.get("path"));
+        if (!target) {
+          throw new BunnyStorageError("Silinecek dosya yolu belirtilmedi", 400);
+        }
+        await deleteFromBunny(target);
+        res.writeHead(204, {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        });
+        res.end();
+      } catch (error) {
+        console.error("Dosya silinirken hata", error);
+        if (error instanceof BunnyStorageError) {
+          sendJson(res, error.statusCode ?? 500, { error: error.message });
+          return;
+        }
+        sendJson(res, 500, { error: "Dosya silinemedi" });
+      }
+      return;
+    }
+
+    methodNotAllowed(res);
+    return;
+  }
 
   if (url.pathname === "/api/casts") {
     if (req.method === "GET") {
@@ -379,6 +506,6 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(
-    `Timeline server listening on http://localhost:${PORT}/api (timelines, casts, video-library, video-details, groups)`
+    `Timeline server listening on http://localhost:${PORT}/api (timelines, casts, video-library, video-details, groups, uploads)`
   );
 });

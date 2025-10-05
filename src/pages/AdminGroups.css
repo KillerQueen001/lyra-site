@@ -158,6 +158,51 @@
   color: rgba(209, 206, 255, 0.55);
 }
 
+.admin-groups__upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-groups__upload button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 124, 255, 0.45);
+  background: rgba(44, 36, 82, 0.8);
+  color: #f5f4ff;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.admin-groups__upload button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-groups__upload-input {
+  display: none;
+}
+
+.admin-groups__upload-status {
+  min-height: 1.2em;
+  color: rgba(209, 206, 255, 0.6);
+}
+
+.admin-groups__upload-status--uploading {
+  color: #ffe6a3;
+}
+
+.admin-groups__upload-status--success {
+  color: #b6ffef;
+}
+
+.admin-groups__upload-status--error {
+  color: #ffc5d3;
+}
+
 .admin-groups__span-2 {
   grid-column: span 2;
 }

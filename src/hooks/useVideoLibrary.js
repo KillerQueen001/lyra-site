@@ -100,7 +100,6 @@ export function useVideoLibrary() {
   }, []);
 
   return { library, status, error, reload, removeEntry };
-  return { library, status, error, reload };
 }
 
 export function useVideoLibraryEntries() {
