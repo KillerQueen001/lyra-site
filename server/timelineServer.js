@@ -18,11 +18,11 @@ import { listGroupEntries, createGroupEntry } from "./groups.js";
 import {
   getBunnyStorageStatus,
   uploadBufferToBunny,
-  deleteFromBunny,
-  createStoragePath,
   BunnyStorageError,
+  isBunnyConfigured,
 } from "./bunnyStorage.js";
 import { safeString } from "./utils.js";
+import { s } from "framer-motion/client";
 
 const PORT = Number(
   (typeof globalThis !== "undefined" &&
@@ -36,10 +36,19 @@ function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS,HEAD",
+    "Access-Control-Allow-Headers": "Content-Type,Accept",
   });
   res.end(JSON.stringify(data));
+}
+
+function sendEmpty(res, statusCode) {
+  res.writeHead(statusCode, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS,HEAD",
+    "Access-Control-Allow-Headers": "Content-Type,Accept",
+  });
+  res.end();
 }
 
 function notFound(res) {
@@ -75,38 +84,254 @@ async function readJsonBody(req) {
   });
 }
 
-function extractBase64Payload(value) {
-  const raw = safeString(value);
-  if (!raw) return "";
-  const commaIndex = raw.indexOf(",");
-  if (commaIndex >= 0) {
-    return raw.slice(commaIndex + 1);
-  }
-  return raw;
+const MAX_UPLOAD_SIZE = 15 * 1024 * 1024; // 15 MB
+const MAX_REQUEST_SIZE = MAX_UPLOAD_SIZE + 64 * 1024;
+const MULTIPART_BOUNDARY_REGEX = /boundary=(?:"?)([^";]+)(?:"?)/i;
+const DOUBLE_CRLF_BUFFER = Buffer.from("\r\n\r\n");
+const CRLF_BUFFER = Buffer.from("\r\n");
+const DASH_CODE = "-".charCodeAt(0);
+
+function createHttpError(statusCode, reason, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.reason = reason;
+  return error;
 }
 
-const MIME_EXTENSION_MAP = new Map([
-  ["image/png", "png"],
-  ["image/x-png", "png"],
-  ["image/jpeg", "jpg"],
-  ["image/jpg", "jpg"],
-  ["image/webp", "webp"],
-  ["image/gif", "gif"],
-  ["image/svg+xml", "svg"],
-]);
+function readRequestBuffer(req, limit = MAX_REQUEST_SIZE) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    let finished = false;
 
-function guessExtension(contentType, fileName) {
-  const content = safeString(contentType).toLowerCase();
-  if (content && MIME_EXTENSION_MAP.has(content)) {
-    return MIME_EXTENSION_MAP.get(content) || "";
+    function done(error, value) {
+      if (finished) return;
+      finished = true;
+      if (error) {
+        reject(error);
+      } else {
+        resolve(value);
+      }
+    }
+
+    req.on("data", (chunk) => {
+      if (finished) return;
+      total += chunk.length;
+      if (total > limit) {
+        const error = createHttpError(
+          413,
+          "PAYLOAD_TOO_LARGE",
+          "Dosya boyutu sınırı aşıldı (maksimum 15 MB)."
+        );
+        req.destroy(error);
+        done(error);
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on("end", () => {
+      if (finished) return;
+      done(null, Buffer.concat(chunks));
+    });
+
+    req.on("error", (error) => {
+      done(error);
+    });
+  });
+}
+
+function extractBoundary(contentType) {
+  const match = MULTIPART_BOUNDARY_REGEX.exec(safeString(contentType));
+  if (!match) return "";
+  return safeString(match[1]);
+}
+
+function trimTrailingCrlf(buffer) {
+  let end = buffer.length;
+  while (
+    end >= 2 &&
+    buffer[end - 2] === CRLF_BUFFER[0] &&
+    buffer[end - 1] === CRLF_BUFFER[1]
+  ) {
+    end -= 2;
   }
-  const name = safeString(fileName).toLowerCase();
-  if (!name) return "";
-  const parts = name.split(".");
-  if (parts.length > 1) {
-    return parts.pop() || "";
+  return buffer.slice(0, end);
+}
+
+function parsePart(buffer) {
+  const headerEnd = buffer.indexOf(DOUBLE_CRLF_BUFFER);
+  if (headerEnd === -1) return null;
+  const headerSection = buffer.slice(0, headerEnd).toString("utf8");
+  const body = buffer.slice(headerEnd + DOUBLE_CRLF_BUFFER.length);
+  const headers = headerSection
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const headerMap = new Map();
+  for (const line of headers) {
+    const colonIndex = line.indexOf(":");
+    if (colonIndex <= 0) continue;
+    const name = line.slice(0, colonIndex).trim().toLowerCase();
+    const value = line.slice(colonIndex + 1).trim();
+    headerMap.set(name, value);
   }
-  return "";
+
+  const disposition = headerMap.get("content-disposition");
+  if (!disposition) return null;
+  const params = {};
+  for (const part of disposition.split(";")) {
+    const section = part.trim();
+    if (!section) continue;
+    const equalsIndex = section.indexOf("=");
+    if (equalsIndex === -1) continue;
+    const key = section.slice(0, equalsIndex).trim();
+    let value = section.slice(equalsIndex + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    params[key] = value;
+  }
+
+  const name = safeString(params.name);
+  const filename = safeString(params.filename);
+  const contentType = safeString(headerMap.get("content-type"));
+  return { name, filename, contentType, data: body };
+}
+
+async function parseMultipartForm(req, limit = MAX_REQUEST_SIZE) {
+  const contentType = req.headers?.["content-type"] || req.headers?.["Content-Type"];
+  const boundary = extractBoundary(contentType);
+  if (!boundary) {
+    throw createHttpError(
+      400,
+      "BAD_REQUEST",
+      "multipart/form-data içeriği bekleniyor."
+    );
+  }
+  const boundaryMarker = Buffer.from(`--${boundary}`);
+  const closingMarker = Buffer.from(`--${boundary}--`);
+  const body = await readRequestBuffer(req, limit);
+  const fields = {};
+  const files = {};
+  let position = 0;
+
+  while (position < body.length) {
+    const boundaryIndex = body.indexOf(boundaryMarker, position);
+    if (boundaryIndex === -1) {
+      break;
+    }
+    position = boundaryIndex + boundaryMarker.length;
+
+    const isClosing =
+      position + 1 < body.length &&
+      body[position] === DASH_CODE &&
+      body[position + 1] === DASH_CODE;
+    if (isClosing) {
+      break;
+    }
+
+    if (
+      position + 1 < body.length &&
+      body[position] === CRLF_BUFFER[0] &&
+      body[position + 1] === CRLF_BUFFER[1]
+    ) {
+      position += 2;
+    }
+
+    let nextBoundaryIndex = body.indexOf(boundaryMarker, position);
+    const closingIndex = body.indexOf(closingMarker, position);
+    if (closingIndex !== -1 && (closingIndex < nextBoundaryIndex || nextBoundaryIndex === -1)) {
+      nextBoundaryIndex = closingIndex;
+    }
+    const endIndex = nextBoundaryIndex === -1 ? body.length : nextBoundaryIndex;
+    const partBuffer = trimTrailingCrlf(body.slice(position, endIndex));
+    const part = parsePart(partBuffer);
+    if (part && part.name) {
+      if (part.filename) {
+        files[part.name] = {
+          fileName: part.filename,
+          mimeType: part.contentType,
+          buffer: part.data,
+        };
+      } else {
+        fields[part.name] = part.data.toString("utf8");
+      }
+    }
+    position = endIndex;
+  }
+
+  return { fields, files };
+}
+
+async function readUploadRequest(req) {
+  const { fields, files } = await parseMultipartForm(req);
+  const path = safeString(fields.path);
+  const file = files.file;
+  if (!file) {
+    return { path, file: null };
+  }
+  return {
+    path,
+    file: {
+      buffer: file.buffer,
+      fileName: safeString(file.fileName),
+      mimeType: safeString(file.mimeType),
+    },
+  };
+}
+
+function handleUploadError(res, error) {
+  const statusCode = Number.isInteger(error?.statusCode)
+    ? error.statusCode
+    : 500;
+  let reason = safeString(error?.reason);
+  let message = safeString(error?.message);
+
+  if (error instanceof BunnyStorageError) {
+    if (statusCode === 503) {
+      reason = "BUNNY_STORAGE_NOT_CONFIGURED";
+      if (!message) {
+        message = "Bunny Storage yapılandırması eksik.";
+      }
+    } else {
+      reason = "BUNNY_PUT_FAILED";
+      if (!message) {
+        message = "Bunny Storage yüklemesi başarısız oldu.";
+      }
+    }
+  }
+
+  if (!reason) {
+    if (statusCode === 400) {
+      reason = "BAD_REQUEST";
+      if (!message) {
+        message = "Geçersiz istek gönderildi.";
+      }
+    } else if (statusCode === 413) {
+      reason = "PAYLOAD_TOO_LARGE";
+      if (!message) {
+        message = "Dosya boyutu sınırı aşıldı.";
+      }
+    } else if (statusCode === 503) {
+      reason = "SERVER_UNAVAILABLE";
+      if (!message) {
+        message = "Servis geçici olarak kullanılamıyor.";
+      }
+    } else {
+      reason = "SERVER_ERROR";
+      if (!message) {
+        message = "Dosya yüklenemedi.";
+      }
+    }
+  }
+
+  sendJson(res, statusCode, {
+    ok: false,
+    reason,
+    message,
+  });
 }
 
 function normalizeTimelineEntry(entry) {
@@ -131,82 +356,64 @@ const server = createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  if (url.pathname === "/api/uploads/status") {
-    if (req.method === "GET") {
-      const status = getBunnyStorageStatus();
-      sendJson(res, 200, status);
+  if (url.pathname === "/api/media/upload-image") {
+    if (req.method === "HEAD") {
+      const configured = isBunnyConfigured();
+      if (!configured) {
+        sendEmpty(res, 503);
+        return;
+      }
+      sendEmpty(res, 200);
       return;
     }
-    methodNotAllowed(res);
-    return;
-  }
+    if (req.method === "GET") {
+      const configured = isBunnyConfigured();
+      if (!configured) {
+        sendJson(res, 503, {
+          ok: false,
+          reason: "BUNNY_STORAGE_NOT_CONFIGURED",
+          message: "Bunny Storage yapılandırması eksik.",
+        });
+        return;
+      }
+      const status = getBunnyStorageStatus();
+      sendJson(res, 200, {
+        ok: true,
+        available: true,
+        cdnBaseUrl: status.cdnBaseUrl || null,
+      });
+      return;
+    }
 
-  if (url.pathname === "/api/uploads") {
     if (req.method === "POST") {
       try {
-        const payload = await readJsonBody(req);
-        const base64 = extractBase64Payload(payload?.data);
-        if (!base64) {
-          throw new BunnyStorageError("Yüklenecek dosya verisi bulunamadı", 400);
+        const { path, file } = await readUploadRequest(req);
+        if (!file?.buffer?.length || !path) {
+          throw createHttpError(
+            400,
+            "BAD_REQUEST",
+            "Dosya ve hedef yolu zorunludur."
+          );
         }
-        let buffer;
-        try {
-          buffer = Buffer.from(base64, "base64");
-        } catch {
-          throw new BunnyStorageError("Dosya verisi çözümlenemedi", 400);
-        }
-        if (!buffer || !buffer.length) {
-          throw new BunnyStorageError("Geçerli dosya verisi bulunamadı", 400);
-        }
-        const folder = safeString(payload?.folder);
-        const fileName = safeString(payload?.fileName);
-        const explicitPath = safeString(payload?.path);
-        const extension = safeString(payload?.extension) ||
-          guessExtension(payload?.contentType, fileName);
-        const uploadPath = explicitPath
-          ? explicitPath
-          : createStoragePath({
-              folder: folder || undefined,
-              fileName: fileName || undefined,
-              extension: extension || undefined,
-            });
         const result = await uploadBufferToBunny(
-          uploadPath,
-          buffer,
-          safeString(payload?.contentType) || "application/octet-stream"
+          path,
+          file.buffer,
+          file.mimeType || "application/octet-stream"
         );
-        sendJson(res, 201, result);
-      } catch (error) {
-        console.error("Dosya yüklenirken hata", error);
-        if (error instanceof BunnyStorageError) {
-          sendJson(res, error.statusCode ?? 500, { error: error.message });
-          return;
-        }
-        sendJson(res, 500, { error: "Dosya yüklenemedi" });
-      }
-      return;
-    }
-
-    if (req.method === "DELETE") {
-      try {
-        const target = safeString(url.searchParams.get("path"));
-        if (!target) {
-          throw new BunnyStorageError("Silinecek dosya yolu belirtilmedi", 400);
-        }
-        await deleteFromBunny(target);
-        res.writeHead(204, {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
+        sendJson(res, 201, {
+          ok: true,
+          path: result.path,
+          cdnUrl: result.cdnUrl || result.url || null,
+          cdnBaseUrl: result.cdnBaseUrl || null,
         });
-        res.end();
       } catch (error) {
-        console.error("Dosya silinirken hata", error);
-        if (error instanceof BunnyStorageError) {
-          sendJson(res, error.statusCode ?? 500, { error: error.message });
-          return;
+        if (
+          !(error instanceof BunnyStorageError) &&
+          (error?.statusCode ?? 500) >= 500
+        ) {
+          console.error("Bunny yükleme hatası", error);
         }
-        sendJson(res, 500, { error: "Dosya silinemedi" });
+        handleUploadError(res, error);
       }
       return;
     }

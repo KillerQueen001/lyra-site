@@ -70,6 +70,8 @@ export default function AdminVideoLibrary() {
   const {
     status: uploadStatus,
     available: isUploadAvailable,
+    message: uploadStatusMessage,
+    reason: uploadStatusReason,
     error: uploadStatusError,
     reload: reloadUploadStatus,
   } = useUploadStatus()
@@ -159,7 +161,8 @@ export default function AdminVideoLibrary() {
       const message =
         uploadStatus === "loading"
           ? "Bunny Storage hazır olana kadar bekleyin."
-          : uploadStatusError?.message ||
+          : uploadStatusMessage ||
+            uploadStatusError?.message ||
             "Bunny Storage erişilemiyor. Lütfen bağlantıyı kontrol edin.";
       updatePosterStatus("error", message);
       return;
@@ -187,9 +190,12 @@ export default function AdminVideoLibrary() {
     : uploadStatus === "loading"
     ? "Bunny Storage durumu kontrol ediliyor…"
     : uploadStatus === "error"
-    ? uploadStatusError?.message || "Bunny Storage durumuna ulaşılamadı."
+    ? uploadStatusError?.message || uploadStatusMessage || "Bunny Storage durumuna ulaşılamadı."
     : !isUploadAvailable
-    ? "Bunny Storage yapılandırması eksik görünüyor."
+    ? uploadStatusMessage ||
+      (uploadStatusReason === "BUNNY_STORAGE_NOT_CONFIGURED"
+        ? "Bunny Storage yapılandırması eksik görünüyor."
+        : "Bunny Storage şu anda kullanılamıyor.")
     : "Poster görselini Bunny Storage'a yükleyebilirsiniz.";
 
   const handleSubmit = async (event) => {

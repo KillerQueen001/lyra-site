@@ -47,11 +47,14 @@ export function useUploadStatus() {
 
   const available = Boolean(data?.available);
   const cdnBaseUrl = data?.cdnBaseUrl || "";
-
+  const reason = data?.reason || "";
+  const message = data?.message || ""; 
   return {
     status,
     available,
     cdnBaseUrl,
+    reason,
+    message,   
     error,
     reload,
   };

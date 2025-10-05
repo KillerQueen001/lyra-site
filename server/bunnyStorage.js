@@ -5,6 +5,16 @@ import { safeString, slugify } from "./utils.js";
 
 const DEFAULT_STORAGE_HOST = "storage.bunnycdn.com";
 const STORAGE_PROTOCOL = "https://";
+const API_KEY_ENV_NAMES = [
+  "BUNNY_STORAGE_API_KEY",
+  "BUNNY_STORAGE_KEY",
+  "BUNNY_STORAGE_PASSWORD",
+];
+const CDN_HOST_ENV_NAMES = [
+  "BUNNY_PULL_ZONE_HOST",
+  "BUNNY_STORAGE_CDN_HOST",
+  "BUNNY_CDN_HOST",
+];
 
 function readEnv(name) {
   if (typeof process === "undefined" || !process.env) {
@@ -54,9 +64,11 @@ function getStorageHost() {
 }
 
 function getCdnHost(zone) {
-  const fromEnv = readEnv("BUNNY_STORAGE_CDN_HOST") || readEnv("BUNNY_CDN_HOST");
-  if (fromEnv) {
-    return fromEnv.replace(/^(https?:)?\/?\//, "").replace(/\/$/, "");
+  for (const key of CDN_HOST_ENV_NAMES) {
+    const value = readEnv(key);
+    if (value) {
+      return value.replace(/^(https?:)?\/?\//, "").replace(/\/$/, "");
+    }
   }
   const fallback = safeString(zone);
   if (!fallback) return "";
@@ -78,7 +90,11 @@ function joinCdnBaseWithPath(baseUrl, path) {
 
 function resolveConfig() {
   const zone = readEnv("BUNNY_STORAGE_ZONE");
-  const apiKey = readEnv("BUNNY_STORAGE_KEY") || readEnv("BUNNY_STORAGE_PASSWORD");
+  let apiKey = "";
+  for (const key of API_KEY_ENV_NAMES) {
+    apiKey = readEnv(key);
+    if (apiKey) break;
+  }
   if (!zone || !apiKey) {
     return null;
   }
@@ -116,11 +132,15 @@ function ensureConfigured() {
   const config = resolveConfig();
   if (!config) {
     throw new BunnyStorageError(
-      "Bunny Storage yapılandırılmamış. BUNNY_STORAGE_ZONE ve BUNNY_STORAGE_KEY ortam değişkenlerini ayarlayın.",
+      "Bunny Storage yapılandırılmamış. BUNNY_STORAGE_ZONE ve BUNNY_STORAGE_API_KEY ortam değişkenlerini ayarlayın.",
       503
     );
   }
   return config;
+}
+
+export function isBunnyConfigured() {
+  return Boolean(resolveConfig());
 }
 
 function ensureFetch() {

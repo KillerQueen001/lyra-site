@@ -11,10 +11,16 @@ const MIME_EXTENSION_MAP = {
   "image/svg+xml": "svg",
 };
 
-const DEFAULT_STATUS = { available: false, cdnBaseUrl: "" };
+const DEFAULT_STATUS = {
+  available: false,
+  cdnBaseUrl: "",
+  reason: "",
+  message: "",
+};
 
 let cachedStatus = null;
 let statusPromise = null;
+let frontendCdnBase = undefined;
 
 function cleanString(value) {
   if (typeof value !== "string") return "";
@@ -28,34 +34,35 @@ function cleanBaseUrl(value) {
   return str.replace(/\/$/, "");
 }
 
-function extractStatus(raw) {
-  if (!raw || typeof raw !== "object") return {};
-  const status = {};
-  if (Object.prototype.hasOwnProperty.call(raw, "available")) {
-    status.available = Boolean(raw.available);
+function getFrontendCdnBase() {
+  if (frontendCdnBase !== undefined) {
+    return frontendCdnBase;
   }
-  const candidates = [
-    raw.cdnBaseUrl,
-    raw.cdnBaseURL,
-    raw.cdnBase,
-    raw.baseUrl,
-    raw.baseURL,
-    raw.cdnUrlBase,
-  ];
-  for (const candidate of candidates) {
-    const cleaned = cleanBaseUrl(candidate);
-    if (cleaned) {
-      status.cdnBaseUrl = cleaned;
-      break;
+  let host = "";
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.env) {
+      host = cleanString(import.meta.env.VITE_CDN_HOST);
     }
+  } catch {
+    host = "";
   }
-  return status;
+  if (!host) {
+    frontendCdnBase = "";
+    return frontendCdnBase;
+  }
+  const normalized = host
+    .replace(/^(https?:)?\/?\//, "")
+    .replace(/\/$/, "");
+  frontendCdnBase = normalized ? `https://${normalized}` : "";
+  return frontendCdnBase;
 }
 
 function mergeStatus(base, update) {
   const next = {
     available: base?.available ?? DEFAULT_STATUS.available,
     cdnBaseUrl: base?.cdnBaseUrl || DEFAULT_STATUS.cdnBaseUrl,
+    reason: base?.reason || DEFAULT_STATUS.reason,
+    message: base?.message || DEFAULT_STATUS.message,
   };
   if (Object.prototype.hasOwnProperty.call(update, "available")) {
     next.available = Boolean(update.available);
@@ -63,17 +70,25 @@ function mergeStatus(base, update) {
   if (update.cdnBaseUrl) {
     next.cdnBaseUrl = cleanBaseUrl(update.cdnBaseUrl);
   }
+    if (Object.prototype.hasOwnProperty.call(update, "reason")) {
+    next.reason = cleanString(update.reason);
+  }
+  if (Object.prototype.hasOwnProperty.call(update, "message")) {
+    next.message = cleanString(update.message);
+  }
+  if (!next.cdnBaseUrl) {
+    next.cdnBaseUrl = cleanBaseUrl(getFrontendCdnBase());
+  }
   return next;
 }
 
-function rememberStatus(status) {
-  const extracted = extractStatus(status);
-  cachedStatus = mergeStatus(cachedStatus || DEFAULT_STATUS, extracted);
+function rememberStatus(update) {
+  cachedStatus = mergeStatus(cachedStatus || DEFAULT_STATUS, update);
   return cachedStatus;
 }
 
 async function fetchUploadStatus() {
-  const url = buildApiUrl("/uploads/status");
+  const url = buildApiUrl("/media/upload-image");
   if (!url || typeof fetch === "undefined") {
     throw new Error("Bunny Storage durumuna ulaşılamadı");
   }
@@ -81,11 +96,28 @@ async function fetchUploadStatus() {
     method: "GET",
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) {
-    throw new Error(`Bunny Storage durumu alınamadı: ${response.status}`);
+    const data = await response.json().catch(() => ({}));
+  if (response.status === 503) {
+    return rememberStatus({
+      available: false,
+      cdnBaseUrl: data.cdnBaseUrl || data.cdnBaseURL || "",
+      reason: data.reason || "BUNNY_STORAGE_NOT_CONFIGURED",
+      message:
+        data.message ||
+        "Bunny Storage yapılandırması eksik görünüyor. Lütfen sunucu .env ayarlarını doğrulayın.",
+    });
   }
-  const data = await response.json().catch(() => ({}));
-  return rememberStatus(data);
+  if (!response.ok) {
+    throw new Error(
+      data?.message || data?.error || `Bunny Storage durumu alınamadı: ${response.status}`
+    );
+  }
+  return rememberStatus({
+    available: true,
+    cdnBaseUrl: data.cdnBaseUrl || data.cdnBaseURL || "",
+    reason: "",
+    message: "",
+  });
 }
 
 export function getCachedUploadStatus() {
@@ -121,131 +153,134 @@ export function refreshUploadStatus() {
   return loadUploadStatus({ force: true });
 }
 
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("Dosya içeriği okunamadı"));
-        return;
-      }
-      const commaIndex = result.indexOf(",");
-      if (commaIndex >= 0) {
-        resolve(result.slice(commaIndex + 1));
-      } else {
-        resolve(result);
-      }
-    };
-    reader.onerror = () => {
-      reject(new Error("Dosya okunamadı"));
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function getExtension(file, explicitExtension) {
-  if (explicitExtension) {
-    return explicitExtension.replace(/[^a-z0-9]/gi, "").toLowerCase();
+function getExtension(file, override) {
+  const explicit = cleanString(override).toLowerCase();
+  if (explicit) {
+    return explicit.replace(/[^a-z0-9]/g, "");
   }
-  if (file?.type && MIME_EXTENSION_MAP[file.type]) {
-    return MIME_EXTENSION_MAP[file.type];
+  const type = cleanString(file?.type).toLowerCase();
+  if (type && MIME_EXTENSION_MAP[type]) {
+    return MIME_EXTENSION_MAP[type];
   }
-  const name = typeof file?.name === "string" ? file.name.toLowerCase() : "";
-  const nameParts = name.split(".");
-  if (nameParts.length > 1) {
-    return nameParts.pop();
+  const name = cleanString(file?.name).toLowerCase();
+  if (name) {
+    const parts = name.split(".");
+    if (parts.length > 1) {
+      return parts.pop() || "";
+    }
   }
   return "";
 }
 
-function buildUploadPayload(file, options = {}) {
-  if (!file) {
-    throw new Error("Yüklenecek dosya bulunamadı");
+function sanitizeFolder(value) {
+  const raw = cleanString(value).replace(/\\/g, "/");
+  if (!raw) return "";
+  return raw
+    .split("/")
+    .map((segment) => slugifyWithFallback(segment, ""))
+    .filter(Boolean)
+    .join("/");
+}
+
+function sanitizeFileName(value, fallback) {
+  const base = slugifyWithFallback(value, fallback || "asset");
+  return base || fallback || "asset";
+}
+
+function buildUploadPath(file, options = {}) {
+  const explicit = cleanString(options.path).replace(/^\/+/, "");
+  if (explicit) {
+    return explicit.replace(/\\/g, "/");
   }
-  const folder = options.folder || "uploads";
-  const fallbackName = slugifyWithFallback(file.name || "dosya", "asset");
-  const fileName = options.fileName || fallbackName;
+  const folder = sanitizeFolder(options.folder);
+  const fallbackName = slugifyWithFallback(file?.name, "asset");
+  const fileName = sanitizeFileName(options.fileName, fallbackName);
   const extension = getExtension(file, options.extension);
-  const contentType = options.contentType || file.type || "application/octet-stream";
-  return {
-    folder,
-    fileName,
-    extension,
-    contentType,
-  };
+  const finalName = extension ? `${fileName}.${extension}` : fileName;
+  return folder ? `${folder}/${finalName}` : finalName;
+}
+
+function ensureUploadEndpoint() {
+  const url = buildApiUrl("/media/upload-image");
+  if (!url) {
+    throw new Error("Yükleme servisine ulaşılamadı");
+  }
+  return url;
+}
+
+function joinUrl(base, path) {
+  const normalizedBase = cleanBaseUrl(base);
+  const normalizedPath = cleanString(path).replace(/^\/+/, "");
+  if (!normalizedBase || !normalizedPath) return "";
+  return `${normalizedBase}/${normalizedPath}`;
 }
 
 export async function uploadAsset(file, options = {}) {
-  const url = buildApiUrl("/uploads");
-  if (!url || typeof fetch === "undefined") {
-    throw new Error("Yükleme servisine ulaşılamadı");
+  if (!file) {
+    throw new Error("Yüklenecek dosya bulunamadı");
   }
   let status;
   try {
     status = await loadUploadStatus();
   } catch (error) {
-    throw new Error(error.message || "Bunny Storage durumuna ulaşılamadı");
+    throw new Error(error.message || "Bunny Storage durumu alınamadı");
   }
   if (!status?.available) {
     throw new Error(
-      "Bunny Storage yapılandırması eksik görünüyor. Lütfen .env ayarlarını kontrol edin."
+      status?.message ||
+        "Bunny Storage yapılandırması eksik görünüyor. Lütfen .env ayarlarını kontrol edin."
     );
   }
-  const payload = buildUploadPayload(file, options);
-  const base64 = await readFileAsBase64(file);
+  const path = buildUploadPath(file, options);
+  if (!path) {
+    throw new Error("Yüklenecek dosya yolu oluşturulamadı");
+  }
+  const url = ensureUploadEndpoint();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("path", path);
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      folder: payload.folder,
-      fileName: payload.fileName,
-      extension: payload.extension,
-      contentType: payload.contentType,
-      data: base64,
-    }),
+    body: formData,
   });
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    throw new Error(message || `Dosya yüklenemedi: ${response.status}`);
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 503) {
+    rememberStatus({
+      available: false,
+      cdnBaseUrl: data.cdnBaseUrl || data.cdnBaseURL || "",
+      reason: data.reason || "BUNNY_STORAGE_NOT_CONFIGURED",
+      message:
+        data.message ||
+        "Bunny Storage yapılandırması eksik görünüyor. Lütfen sunucu ayarlarını doğrulayın.",
+    });
+    throw new Error(
+      data.message || "Bunny Storage yapılandırması eksik görünüyor. Lütfen ayarları doğrulayın."
+    );
   }
-  const data = await response.json();
-  if (!data || !data.path) {
-    throw new Error("Sunucudan geçerli yükleme yanıtı alınamadı");
+  if (!response.ok || data?.ok === false) {
+    const message =
+      data?.message ||
+      data?.error ||
+      `Dosya yüklenemedi: ${response.status}`;
+    throw new Error(message);
   }
   const updatedStatus = rememberStatus({
     available: true,
-    cdnBaseUrl:
-      cleanBaseUrl(data.cdnBaseUrl) || cleanBaseUrl(status?.cdnBaseUrl) || DEFAULT_STATUS.cdnBaseUrl,
+    cdnBaseUrl: data.cdnBaseUrl || data.cdnBaseURL || "",
+    reason: "",
+    message: "",
   });
-  const path = cleanString(data.path);
-  const size = typeof data.size === "number" ? data.size : file?.size || 0;
-  const responseUrl = cleanString(data.url) || cleanString(data.cdnUrl);
-  const cdnBaseUrl = updatedStatus?.cdnBaseUrl || "";
-  const finalUrl = responseUrl || (cdnBaseUrl && path ? `${cdnBaseUrl}/${path}` : "");
+  const cdnBaseUrl =
+    cleanBaseUrl(data.cdnBaseUrl || data.cdnBaseURL || updatedStatus?.cdnBaseUrl) || "";
+  const explicitUrl = cleanString(data.cdnUrl || data.url);
+  const finalUrl = explicitUrl || joinUrl(cdnBaseUrl, path);
   return {
     path,
     url: finalUrl,
     cdnUrl: finalUrl || null,
     cdnBaseUrl,
-    size,
-    contentType: payload.contentType,
+    size: typeof file.size === "number" ? file.size : undefined,
+    contentType: file.type || "application/octet-stream",
   };
 }
 
-export async function deleteAsset(path) {
-  const sanitizedPath = typeof path === "string" ? path.trim() : "";
-  if (!sanitizedPath) {
-    throw new Error("Silinecek dosya yolu belirtilmedi");
-  }
-  const url = buildApiUrl(`/uploads?path=${encodeURIComponent(sanitizedPath)}`);
-  if (!url || typeof fetch === "undefined") {
-    throw new Error("Yükleme servisine ulaşılamadı");
-  }
-  const response = await fetch(url, { method: "DELETE" });
-  if (!response.ok && response.status !== 204) {
-    const message = await response.text().catch(() => "");
-    throw new Error(message || `Dosya silinemedi: ${response.status}`);
-  }
-  return sanitizedPath;
-}

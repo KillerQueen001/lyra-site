@@ -51,6 +51,8 @@ export default function AdminGroups() {
   const {
     status: uploadStatus,
     available: isUploadAvailable,
+    message: uploadStatusMessage,
+    reason: uploadStatusReason,
     error: uploadStatusError,
     reload: reloadUploadStatus,
   } = useUploadStatus();
@@ -131,7 +133,8 @@ export default function AdminGroups() {
       const message =
         uploadStatus === "loading"
           ? "Bunny Storage hazır olana kadar bekleyin."
-          : uploadStatusError?.message ||
+          : uploadStatusMessage ||
+            uploadStatusError?.message ||
             "Bunny Storage erişilemiyor. Lütfen bağlantıyı kontrol edin.";
       updateAssetStatus(field, "error", message);
       return;
@@ -165,10 +168,20 @@ export default function AdminGroups() {
       return "Bunny Storage durumu kontrol ediliyor…";
     }
     if (uploadStatus === "error") {
-      return uploadStatusError?.message || "Bunny Storage durumuna ulaşılamadı.";
+      return (
+        uploadStatusError?.message ||
+        uploadStatusMessage ||
+        "Bunny Storage durumuna ulaşılamadı."
+      );
     }
     if (!isUploadAvailable) {
-      return "Bunny Storage yapılandırması eksik görünüyor.";
+      if (uploadStatusMessage) {
+        return uploadStatusMessage;
+      }
+      if (uploadStatusReason === "BUNNY_STORAGE_NOT_CONFIGURED") {
+        return "Bunny Storage yapılandırması eksik görünüyor.";
+      }
+      return "Bunny Storage şu anda kullanılamıyor.";
     }
     return field === "banner"
       ? "PNG dosyanızı Bunny Storage'a yükleyebilirsiniz."
