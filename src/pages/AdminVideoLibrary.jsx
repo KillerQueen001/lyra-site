@@ -7,6 +7,7 @@ import {
 } from "../utils/videoLibraryApi";
 import { slugify } from "../utils/slugify";
 import { uploadAsset } from "../utils/uploadApi";
+import { useUploadStatus } from "../hooks/useUploadStatus";
 import "./AdminVideoLibrary.css";
 
 const EMPTY_FORM = {
@@ -66,8 +67,15 @@ export default function AdminVideoLibrary() {
   const [deletingId, setDeletingId] = useState("");
   const [posterUpload, setPosterUpload] = useState({ status: "idle", message: "" });
   const posterInputRef = useRef(null);
+  const {
+    status: uploadStatus,
+    available: isUploadAvailable,
+    error: uploadStatusError,
+    reload: reloadUploadStatus,
+  } = useUploadStatus()
   const isGroupsLoading = groupsStatus === "idle" || groupsStatus === "loading";
   const isPosterUploading = posterUpload.status === "uploading";
+  const isUploadReady = uploadStatus === "ready" && isUploadAvailable;
 
   const entries = useMemo(() => {
     return Object.entries(library || {}).map(([id, entry]) => ({
@@ -147,6 +155,15 @@ export default function AdminVideoLibrary() {
     const file = input?.files?.[0];
     if (!file) return;
     input.value = "";
+    if (!isUploadReady) {
+      const message =
+        uploadStatus === "loading"
+          ? "Bunny Storage hazır olana kadar bekleyin."
+          : uploadStatusError?.message ||
+            "Bunny Storage erişilemiyor. Lütfen bağlantıyı kontrol edin.";
+      updatePosterStatus("error", message);
+      return;
+    }
     updatePosterStatus("uploading", "Yükleniyor…");
     try {
       const slug = resolveVideoSlug();
@@ -164,6 +181,16 @@ export default function AdminVideoLibrary() {
       updatePosterStatus("error", error.message || "Poster yüklenemedi.");
     }
   };
+
+  const posterStatusMessage = posterUpload.message
+    ? posterUpload.message
+    : uploadStatus === "loading"
+    ? "Bunny Storage durumu kontrol ediliyor…"
+    : uploadStatus === "error"
+    ? uploadStatusError?.message || "Bunny Storage durumuna ulaşılamadı."
+    : !isUploadAvailable
+    ? "Bunny Storage yapılandırması eksik görünüyor."
+    : "Poster görselini Bunny Storage'a yükleyebilirsiniz.";
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -376,7 +403,13 @@ export default function AdminVideoLibrary() {
                   <button
                     type="button"
                     onClick={() => posterInputRef.current?.click()}
-                    disabled={submitting || isPosterUploading}
+                    disabled={
+                      submitting ||
+                      isPosterUploading ||
+                      uploadStatus === "loading" ||
+                      uploadStatus === "error" ||
+                      !isUploadAvailable
+                    }
                   >
                     Bunny'e yükle
                   </button>
@@ -390,9 +423,17 @@ export default function AdminVideoLibrary() {
                   <span
                     className={`admin-video__upload-status admin-video__upload-status--${posterUpload.status}`}
                   >
-                    {posterUpload.message ||
-                      "Poster görselini Bunny Storage'a yükleyebilirsiniz."}
+                    {posterStatusMessage}
                   </span>
+                  {uploadStatus !== "ready" ? (
+                    <button
+                      type="button"
+                      onClick={() => reloadUploadStatus().catch(() => {})}
+                      disabled={submitting || isPosterUploading}
+                    >
+                      Durumu yenile
+                    </button>
+                  ) : null}
                 </small>
               </label>
               <label className="admin-video__span-2">

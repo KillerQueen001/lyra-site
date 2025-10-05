@@ -63,6 +63,19 @@ function getCdnHost(zone) {
   return `${fallback}.b-cdn.net`;
 }
 
+function getCdnBaseUrl(config) {
+  const host = safeString(config?.cdnHost);
+  if (!host) return "";
+  return `${STORAGE_PROTOCOL}${host.replace(/\/$/, "")}`;
+}
+
+function joinCdnBaseWithPath(baseUrl, path) {
+  const base = safeString(baseUrl).replace(/\/$/, "");
+  const relative = safeString(path).replace(/^\/+/, "");
+  if (!base || !relative) return "";
+  return `${base}/${relative}`;
+}
+
 function resolveConfig() {
   const zone = readEnv("BUNNY_STORAGE_ZONE");
   const apiKey = readEnv("BUNNY_STORAGE_KEY") || readEnv("BUNNY_STORAGE_PASSWORD");
@@ -84,7 +97,7 @@ export function getBunnyStorageStatus() {
   if (!config) {
     return { available: false };
   }
-  const { cdnHost } = config;
+  const cdnBaseUrl = getCdnBaseUrl(config);
   return {
     available: true,
     cdnBaseUrl: cdnHost ? `${STORAGE_PROTOCOL}${cdnHost}` : null,
@@ -120,11 +133,9 @@ export function buildCdnUrl(path) {
   if (!config) return "";
   const sanitized = sanitizeRemotePath(path);
   if (!sanitized) return "";
-  const base = config.cdnHost
-    ? `${STORAGE_PROTOCOL}${config.cdnHost.replace(/\/$/, "")}`
-    : "";
+  const base = getCdnBaseUrl(config);
   if (!base) return "";
-  return `${base}/${sanitized}`;
+  return joinCdnBaseWithPath(base, sanitized);
 }
 
 export async function uploadBufferToBunny(path, buffer, contentType = "application/octet-stream") {
@@ -150,9 +161,13 @@ export async function uploadBufferToBunny(path, buffer, contentType = "applicati
       response.status
     );
   }
+  const cdnBaseUrl = getCdnBaseUrl(config);
+  const cdnUrl = cdnBaseUrl ? joinCdnBaseWithPath(cdnBaseUrl, uploadPath) : "";
   return {
     path: uploadPath,
-    url: buildCdnUrl(uploadPath),
+    url: cdnUrl,
+    cdnUrl: cdnUrl || null,
+    cdnBaseUrl: cdnBaseUrl || null,
     size: buffer?.length ?? 0,
   };
 }

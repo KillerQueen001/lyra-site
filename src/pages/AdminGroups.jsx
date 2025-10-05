@@ -4,6 +4,7 @@ import { useVideoLibrary } from "../hooks/useVideoLibrary";
 import { createGroup, isPngUrl } from "../utils/groupsApi";
 import { slugify } from "../utils/slugify";
 import {uploadAsset} from "../utils/uploadApi";
+import { useUploadStatus } from "../hooks/useUploadStatus";
 import "./AdminGroups.css";
 
 const EMPTY_FORM = {
@@ -47,11 +48,18 @@ export default function AdminGroups() {
   });
   const bannerInputRef = useRef(null);
   const logoInputRef = useRef(null);
+  const {
+    status: uploadStatus,
+    available: isUploadAvailable,
+    error: uploadStatusError,
+    reload: reloadUploadStatus,
+  } = useUploadStatus();
   const isLoading = status === "idle" || status === "loading";
   const isUploadingAsset =
     assetUploads.banner.status === "uploading" ||
     assetUploads.logo.status === "uploading";
   const videoCounts = useMemo(() => {
+  const isUploadReady = uploadStatus === "ready" && isUploadAvailable;
     const counts = {};
     Object.entries(library || {}).forEach(([, entry]) => {
       const groupId = typeof entry?.groupId === "string" ? entry.groupId : "";
@@ -119,6 +127,15 @@ export default function AdminGroups() {
       updateAssetStatus(field, "error", "Lütfen PNG formatında bir dosya seçin.");
       return;
     }
+    if (!isUploadReady) {
+      const message =
+        uploadStatus === "loading"
+          ? "Bunny Storage hazır olana kadar bekleyin."
+          : uploadStatusError?.message ||
+            "Bunny Storage erişilemiyor. Lütfen bağlantıyı kontrol edin.";
+      updateAssetStatus(field, "error", message);
+      return;
+    }
     updateAssetStatus(field, "uploading", "Yükleniyor…");
     try {
       const slug = getGroupSlug();
@@ -137,6 +154,25 @@ export default function AdminGroups() {
     } catch (error) {
       updateAssetStatus(field, "error", error.message || "Dosya yüklenemedi.");
     }
+  };
+
+  const resolveUploadMessage = (field) => {
+    const state = assetUploads[field];
+    if (state.message) {
+      return state.message;
+    }
+    if (uploadStatus === "loading") {
+      return "Bunny Storage durumu kontrol ediliyor…";
+    }
+    if (uploadStatus === "error") {
+      return uploadStatusError?.message || "Bunny Storage durumuna ulaşılamadı.";
+    }
+    if (!isUploadAvailable) {
+      return "Bunny Storage yapılandırması eksik görünüyor.";
+    }
+    return field === "banner"
+      ? "PNG dosyanızı Bunny Storage'a yükleyebilirsiniz."
+      : "Logo için PNG dosyası yüklemek üzere butona tıklayın.";
   };
 
   const handleSubmit = async (event) => {
@@ -303,7 +339,13 @@ export default function AdminGroups() {
                   <button
                     type="button"
                     onClick={() => bannerInputRef.current?.click()}
-                    disabled={isUploadingAsset || submitting}
+                    disabled={
+                      isUploadingAsset ||
+                      submitting ||
+                      uploadStatus === "loading" ||
+                      uploadStatus === "error" ||
+                      !isUploadAvailable
+                    }
                   >
                     Bunny'e yükle
                   </button>
@@ -317,9 +359,17 @@ export default function AdminGroups() {
                   <span
                     className={`admin-groups__upload-status admin-groups__upload-status--${assetUploads.banner.status}`}
                   >
-                    {assetUploads.banner.message ||
-                      "PNG dosyanızı Bunny Storage'a yükleyebilirsiniz."}
+                    {resolveUploadMessage("banner")}
                   </span>
+                  {uploadStatus !== "ready" ? (
+                    <button
+                      type="button"
+                      onClick={() => reloadUploadStatus().catch(() => {})}
+                      disabled={isUploadingAsset || submitting}
+                    >
+                      Durumu yenile
+                    </button>
+                  ) : null}
                 </small>
               </label>
               <label>
@@ -334,7 +384,13 @@ export default function AdminGroups() {
                   <button
                     type="button"
                     onClick={() => logoInputRef.current?.click()}
-                    disabled={isUploadingAsset || submitting}
+                    disabled={
+                      isUploadingAsset ||
+                      submitting ||
+                      uploadStatus === "loading" ||
+                      uploadStatus === "error" ||
+                      !isUploadAvailable
+                    }
                   >
                     Bunny'e yükle
                   </button>
@@ -348,9 +404,17 @@ export default function AdminGroups() {
                   <span
                     className={`admin-groups__upload-status admin-groups__upload-status--${assetUploads.logo.status}`}
                   >
-                    {assetUploads.logo.message ||
-                      "Logo için PNG dosyası yüklemek üzere butona tıklayın."}
+                    {resolveUploadMessage("logo")}
                   </span>
+                  {uploadStatus !== "ready" ? (
+                    <button
+                      type="button"
+                      onClick={() => reloadUploadStatus().catch(() => {})}
+                      disabled={isUploadingAsset || submitting}
+                    >
+                      Durumu yenile
+                    </button>
+                  ) : null}
                 </small>
               </label>
             </div>
