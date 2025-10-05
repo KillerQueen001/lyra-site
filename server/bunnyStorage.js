@@ -1,4 +1,5 @@
 /* eslint-env node */
+import"./env.js"
 import process from "node:process";
 import { safeString, slugify } from "./utils.js";
 

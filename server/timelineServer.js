@@ -1,5 +1,6 @@
 /* eslint-env node */
 
+import"./env.js";
 import { createServer } from "http";
 import { Buffer } from "node:buffer"
 import { readStore, writeStore } from "./store.js";
