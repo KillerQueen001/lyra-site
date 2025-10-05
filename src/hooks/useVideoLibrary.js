@@ -15,7 +15,6 @@ import {
   deleteVideoLibraryEntry,
 } from "../utils/videoLibraryApi";
 import { removeVideoEntry } from "../data/videoLibrary";
-import { fetchVideoLibraryEntries } from "../utils/videoLibraryApi";
 
 let remoteLibraryPromise = null;
 
