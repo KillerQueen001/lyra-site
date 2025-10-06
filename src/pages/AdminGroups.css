@@ -151,56 +151,49 @@
   resize: vertical;
 }
 
-.admin-groups__form-grid small {
+.admin-groups__form-grid small,
+.admin-groups__hint {
   font-size: 0.72rem;
   letter-spacing: 0;
   text-transform: none;
   color: rgba(209, 206, 255, 0.55);
 }
 
-.admin-groups__upload {
-  display: flex;
-  flex-wrap: wrap;
+.admin-groups__hint {
+  display: block;
+}
+
+.admin-groups__hint--error {
+  color: #ffc5d3;
+}
+
+.admin-groups__image-preview,
+.admin-groups__logo-preview {
+  margin-top: 6px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 124, 255, 0.25);
+  background: rgba(22, 20, 38, 0.6);
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
 }
 
-.admin-groups__upload button {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 124, 255, 0.45);
-  background: rgba(44, 36, 82, 0.8);
-  color: #f5f4ff;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.admin-groups__upload button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.admin-groups__upload-input {
-  display: none;
-}
-
-.admin-groups__upload-status {
-  min-height: 1.2em;
-  color: rgba(209, 206, 255, 0.6);
-}
-
-.admin-groups__upload-status--uploading {
-  color: #ffe6a3;
+.admin-groups__image-preview img,
+.admin-groups__logo-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .admin-groups__upload-status--success {
   color: #b6ffef;
 }
 
-.admin-groups__upload-status--error {
-  color: #ffc5d3;
+.admin-groups__logo-preview {
+  width: 96px;
+  height: 96px;
+  padding: 12px;
 }
 
 .admin-groups__span-2 {
@@ -272,9 +265,20 @@
   flex-direction: column;
 }
 
-.admin-groups__card-banner img {
-  width: 100%;
+.admin-groups__card-banner {
+  position: relative;
   height: 140px;
+  background: rgba(26, 22, 52, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-groups__card-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
   object-fit: cover;
 }
 
@@ -291,7 +295,7 @@
   gap: 14px;
 }
 
-.admin-groups__card-head img {
+.admin-groups__card-logo {
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -299,6 +303,34 @@
   background: rgba(14, 13, 28, 0.8);
   border: 1px solid rgba(152, 130, 255, 0.4);
   padding: 6px;
+}
+
+.admin-groups__card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(196, 192, 255, 0.6);
+  background: rgba(28, 24, 58, 0.6);
+}
+
+.admin-groups__card-placeholder span {
+  padding: 0 12px;
+}
+
+.admin-groups__card-placeholder--banner {
+  height: 100%;
+}
+
+.admin-groups__card-placeholder--logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px dashed rgba(152, 130, 255, 0.4);
 }
 
 .admin-groups__card-head h3 {

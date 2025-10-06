@@ -195,6 +195,10 @@
   color: rgba(207, 209, 245, 0.65);
 }
 
+.admin-cast__hint--error {
+  color: #ffb3c1;
+}
+
 .admin-cast__actions {
   grid-column: 1 / -1;
   display: flex;

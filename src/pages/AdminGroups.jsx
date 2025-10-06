@@ -1,10 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGroups } from "../hooks/useGroups";
 import { useVideoLibrary } from "../hooks/useVideoLibrary";
 import { createGroup, isPngUrl } from "../utils/groupsApi";
 import { slugify } from "../utils/slugify";
-import {uploadAsset} from "../utils/uploadApi";
-import { useUploadStatus } from "../hooks/useUploadStatus";
 import "./AdminGroups.css";
 
 const EMPTY_FORM = {
@@ -14,6 +12,31 @@ const EMPTY_FORM = {
   banner: "",
   logo: "",
 };
+
+function GroupImagePreview({ url, alt, className, fallbackText, variant }) {
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setError(false);
+  }, [url]);
+
+  if (!url || error) {
+    return (
+      <div className={`${className} admin-groups__card-placeholder admin-groups__card-placeholder--${variant}`}>
+        <span>{fallbackText}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className={className}
+      onError={() => setError(true)}
+    />
+  );
+}
 
 function formatStatus(status) {
   switch (status) {
@@ -42,26 +65,10 @@ export default function AdminGroups() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
-  const [assetUploads, setAssetUploads] = useState({
-    banner: { status: "idle", message: "" },
-    logo: { status: "idle", message: "" },
-  });
-  const bannerInputRef = useRef(null);
-  const logoInputRef = useRef(null);
-  const {
-    status: uploadStatus,
-    available: isUploadAvailable,
-    message: uploadStatusMessage,
-    reason: uploadStatusReason,
-    error: uploadStatusError,
-    reload: reloadUploadStatus,
-  } = useUploadStatus();
+  const [bannerError, setBannerError] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const isLoading = status === "idle" || status === "loading";
-  const isUploadingAsset =
-    assetUploads.banner.status === "uploading" ||
-    assetUploads.logo.status === "uploading";
   const videoCounts = useMemo(() => {
-  const isUploadReady = uploadStatus === "ready" && isUploadAvailable;
     const counts = {};
     Object.entries(library || {}).forEach(([, entry]) => {
       const groupId = typeof entry?.groupId === "string" ? entry.groupId : "";
@@ -70,6 +77,17 @@ export default function AdminGroups() {
     });
     return counts;
   }, [library]);
+
+  const bannerUrl = form.banner.trim();
+  const logoUrl = form.logo.trim();
+
+  useEffect(() => {
+    setBannerError(false);
+  }, [bannerUrl]);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -99,93 +117,6 @@ export default function AdminGroups() {
     setIsIdDirty(false);
     setSubmitError("");
     setSubmitSuccess("");
-    setAssetUploads({
-      banner: { status: "idle", message: "" },
-      logo: { status: "idle", message: "" },
-    });
-  };
-
-  const updateAssetStatus = (field, status, message = "") => {
-    setAssetUploads((prev) => ({
-      ...prev,
-      [field]: { status, message },
-    }));
-  };
-
-  const getGroupSlug = () => {
-    const source = form.groupId.trim() || form.name.trim();
-    const slug = slugify(source);
-    if (slug) return slug;
-    return `group-${Date.now().toString(36)}`;
-  };
-
-  const handleAssetUpload = async (field, fileInput) => {
-    const file = fileInput?.files?.[0];
-    if (!file) return;
-    fileInput.value = "";
-    const fileName = file?.name || `${field}.png`;
-    const lowerName = fileName.toLowerCase();
-    if (!lowerName.endsWith(".png") && file.type !== "image/png" && file.type !== "image/x-png") {
-      updateAssetStatus(field, "error", "Lütfen PNG formatında bir dosya seçin.");
-      return;
-    }
-    if (!isUploadReady) {
-      const message =
-        uploadStatus === "loading"
-          ? "Bunny Storage hazır olana kadar bekleyin."
-          : uploadStatusMessage ||
-            uploadStatusError?.message ||
-            "Bunny Storage erişilemiyor. Lütfen bağlantıyı kontrol edin.";
-      updateAssetStatus(field, "error", message);
-      return;
-    }
-    updateAssetStatus(field, "uploading", "Yükleniyor…");
-    try {
-      const slug = getGroupSlug();
-      const result = await uploadAsset(file, {
-        folder: `groups/${slug}`,
-        fileName: `${field}-${Date.now().toString(36)}`,
-        extension: "png",
-        contentType: "image/png",
-      });
-      setForm((prev) => ({
-        ...prev,
-        [field]: result.url || prev[field],
-      }));
-      updateAssetStatus(field, "success", "Bunny CDN'e yüklendi.");
-      setSubmitError("");
-    } catch (error) {
-      updateAssetStatus(field, "error", error.message || "Dosya yüklenemedi.");
-    }
-  };
-
-  const resolveUploadMessage = (field) => {
-    const state = assetUploads[field];
-    if (state.message) {
-      return state.message;
-    }
-    if (uploadStatus === "loading") {
-      return "Bunny Storage durumu kontrol ediliyor…";
-    }
-    if (uploadStatus === "error") {
-      return (
-        uploadStatusError?.message ||
-        uploadStatusMessage ||
-        "Bunny Storage durumuna ulaşılamadı."
-      );
-    }
-    if (!isUploadAvailable) {
-      if (uploadStatusMessage) {
-        return uploadStatusMessage;
-      }
-      if (uploadStatusReason === "BUNNY_STORAGE_NOT_CONFIGURED") {
-        return "Bunny Storage yapılandırması eksik görünüyor.";
-      }
-      return "Bunny Storage şu anda kullanılamıyor.";
-    }
-    return field === "banner"
-      ? "PNG dosyanızı Bunny Storage'a yükleyebilirsiniz."
-      : "Logo için PNG dosyası yüklemek üzere butona tıklayın.";
   };
 
   const handleSubmit = async (event) => {
@@ -238,10 +169,6 @@ export default function AdminGroups() {
       setSubmitError("Logo adresi PNG formatında olmalıdır.");
       return;
     }
-    if (isUploadingAsset) {
-      setSubmitError("Lütfen dosya yüklemeleri tamamlanana kadar bekleyin.");
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -278,7 +205,7 @@ export default function AdminGroups() {
             <button
               type="button"
               onClick={() => reload().catch(() => {})}
-              disabled={isLoading || submitting || isUploadingAsset}
+              disabled={isLoading || submitting}
             >
               Yenile
             </button>
@@ -291,7 +218,7 @@ export default function AdminGroups() {
             <button
               type="button"
               onClick={() => reload().catch(() => {})}
-              disabled={isLoading || submitting || isUploadingAsset}
+              disabled={isLoading || submitting}
             >
               Tekrar dene
             </button>
@@ -348,41 +275,21 @@ export default function AdminGroups() {
                   onChange={handleInputChange}
                   placeholder="https://.../banner.png"
                 />
-                <small className="admin-groups__upload">
-                  <button
-                    type="button"
-                    onClick={() => bannerInputRef.current?.click()}
-                    disabled={
-                      isUploadingAsset ||
-                      submitting ||
-                      uploadStatus === "loading" ||
-                      uploadStatus === "error" ||
-                      !isUploadAvailable
-                    }
-                  >
-                    Bunny'e yükle
-                  </button>
-                  <input
-                    ref={bannerInputRef}
-                    type="file"
-                    accept="image/png"
-                    className="admin-groups__upload-input"
-                    onChange={(event) => handleAssetUpload("banner", event.target)}
-                  />
-                  <span
-                    className={`admin-groups__upload-status admin-groups__upload-status--${assetUploads.banner.status}`}
-                  >
-                    {resolveUploadMessage("banner")}
-                  </span>
-                  {uploadStatus !== "ready" ? (
-                    <button
-                      type="button"
-                      onClick={() => reloadUploadStatus().catch(() => {})}
-                      disabled={isUploadingAsset || submitting}
-                    >
-                      Durumu yenile
-                    </button>
-                  ) : null}
+                {bannerUrl && !bannerError ? (
+                  <div className="admin-groups__image-preview">
+                    <img
+                      src={bannerUrl}
+                      alt="Banner önizleme"
+                      onError={() => setBannerError(true)}
+                    />
+                  </div>
+                ) : null}
+                <small
+                  className={`admin-groups__hint${bannerError ? " admin-groups__hint--error" : ""}`}
+                >
+                  {bannerError
+                    ? "Banner yüklenemedi. URL'yi doğrulayın."
+                    : "Bunny.net üzerindeki PNG banner adresini girin."}
                 </small>
               </label>
               <label>
@@ -393,41 +300,21 @@ export default function AdminGroups() {
                   onChange={handleInputChange}
                   placeholder="https://.../logo.png"
                 />
-                <small className="admin-groups__upload">
-                  <button
-                    type="button"
-                    onClick={() => logoInputRef.current?.click()}
-                    disabled={
-                      isUploadingAsset ||
-                      submitting ||
-                      uploadStatus === "loading" ||
-                      uploadStatus === "error" ||
-                      !isUploadAvailable
-                    }
-                  >
-                    Bunny'e yükle
-                  </button>
-                  <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/png"
-                    className="admin-groups__upload-input"
-                    onChange={(event) => handleAssetUpload("logo", event.target)}
-                  />
-                  <span
-                    className={`admin-groups__upload-status admin-groups__upload-status--${assetUploads.logo.status}`}
-                  >
-                    {resolveUploadMessage("logo")}
-                  </span>
-                  {uploadStatus !== "ready" ? (
-                    <button
-                      type="button"
-                      onClick={() => reloadUploadStatus().catch(() => {})}
-                      disabled={isUploadingAsset || submitting}
-                    >
-                      Durumu yenile
-                    </button>
-                  ) : null}
+                {logoUrl && !logoError ? (
+                  <div className="admin-groups__logo-preview">
+                    <img
+                      src={logoUrl}
+                      alt="Logo önizleme"
+                      onError={() => setLogoError(true)}
+                    />
+                  </div>
+                ) : null}
+                <small
+                  className={`admin-groups__hint${logoError ? " admin-groups__hint--error" : ""}`}
+                >
+                  {logoError
+                    ? "Logo yüklenemedi. URL'yi doğrulayın."
+                    : "Bunny.net üzerindeki PNG logo adresini girin."}
                 </small>
               </label>
             </div>
@@ -444,14 +331,14 @@ export default function AdminGroups() {
             ) : null}
 
             <div className="admin-groups__actions">
-              <button type="submit" disabled={submitting || isUploadingAsset}>
+              <button type="submit" disabled={submitting}>
                 {submitting ? "Kaydediliyor..." : "Grup Ekle"}
               </button>
               <button
                 type="button"
                 className="admin-groups__secondary"
                 onClick={resetForm}
-                disabled={submitting || isUploadingAsset}
+                disabled={submitting}
               >
                 Temizle
               </button>
@@ -470,11 +357,23 @@ export default function AdminGroups() {
               {groupList.map((group) => (
                 <article className="admin-groups__card" key={group.id}>
                   <div className="admin-groups__card-banner">
-                    <img src={group.banner} alt={`${group.name} banner`} />
+                    <GroupImagePreview
+                      url={group.banner}
+                      alt={`${group.name} banner`}
+                      className="admin-groups__card-banner-img"
+                      fallbackText="Banner yok"
+                      variant="banner"
+                    />
                   </div>
                   <div className="admin-groups__card-body">
                     <div className="admin-groups__card-head">
-                      <img src={group.logo} alt={`${group.name} logo`} />
+                      <GroupImagePreview
+                        url={group.logo}
+                        alt={`${group.name} logo`}
+                        className="admin-groups__card-logo"
+                        fallbackText="Logo"
+                        variant="logo"
+                      />
                       <div>
                         <h3>{group.name}</h3>
                         <span>{group.id}</span>

@@ -75,13 +75,23 @@ export default function Groups() {
         <div className="groups-grid">
           {groupList.map((group) => {
             const videoCount = videoCountByGroup[group.id] || 0;
-            const bannerSrc = group.banner || "/lyra_banner.png";
-            const logoSrc = group.logo || "/lyra_logo.png";
+            const bannerSrc = group.banner?.trim();
+            const logoSrc = group.logo?.trim();
             return (
               <article key={group.id} className="group-card">
-                <img src={bannerSrc} alt={`${group.name} banner`} className="group-banner" />
+                <div className="group-banner">
+                  {bannerSrc ? (
+                    <img src={bannerSrc} alt={`${group.name} banner`} />
+                  ) : (
+                    <div className="group-banner-placeholder">Banner yok</div>
+                  )}
+                </div>
                 <div className="group-info">
-                  <img src={logoSrc} alt={`${group.name} logo`} className="group-logo" />
+                  {logoSrc ? (
+                    <img src={logoSrc} alt={`${group.name} logo`} className="group-logo" />
+                  ) : (
+                    <div className="group-logo group-logo--placeholder">Logo</div>
+                  )}
                   <h2>{group.name}</h2>
                   <p>{group.description || "Bu grup için açıklama eklenmemiş."}</p>
                   <div className="group-meta">

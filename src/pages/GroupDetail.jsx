@@ -59,17 +59,21 @@ export default function GroupDetail() {
     );
   }
 
-  const bannerSrc = group.banner || "/lyra_banner.png";
-  const logoSrc = group.logo || "/lyra_logo.png";
+  const bannerSrc = group.banner?.trim();
+  const logoSrc = group.logo?.trim();
 
   return (
     <div className="group-detail">
       <div
-        className="group-banner"
-        style={{ backgroundImage: `url(${bannerSrc})` }}
+        className={`group-banner${bannerSrc ? "" : " group-banner--placeholder"}`}
+        style={bannerSrc ? { backgroundImage: `url(${bannerSrc})` } : undefined}
       >
         <div className="overlay">
-          <img src={logoSrc} alt={group.name} className="group-detail-logo" />
+            {logoSrc ? (
+            <img src={logoSrc} alt={group.name} className="group-detail-logo" />
+          ) : (
+            <div className="group-detail-logo group-detail-logo--placeholder">Logo</div>
+          )}
           <div className="group-detail-info">
             <h1>{group.name}</h1>
             <p>{group.description || "Bu grup için açıklama eklenmemiş."}</p>
@@ -91,25 +95,29 @@ export default function GroupDetail() {
               Video ekle
             </Link>
           </div>
-        ) : (
-          <div className="content-grid">
-            {groupVideos.map((video) => {
+          ) : (
+            <div className="content-grid">
+              {groupVideos.map((video) => {
               const poster =
                 video.thumbnail?.src ||
                 video.poster ||
                 video.base?.poster ||
-                "/videos/sample_poster.jpg";
-              return (
-                <Link
-                  key={video.id}
-                  to={`/watch/${encodeURIComponent(video.id)}`}
-                  className="content-card"
-                >
-                  <img src={poster} alt={video.title} />
-                  <h3>{video.title}</h3>
-                </Link>
-              );
-            })}
+                "";
+                return (
+                  <Link
+                    key={video.id}
+                    to={`/watch/${encodeURIComponent(video.id)}`}
+                    className="content-card"
+                  >
+                  {poster ? (
+                    <img src={poster} alt={video.title} />
+                  ) : (
+                    <div className="content-card__poster-placeholder">Kapak yok</div>
+                  )}
+                    <h3>{video.title}</h3>
+                  </Link>
+                );
+              })}
           </div>
         )}
       </section>

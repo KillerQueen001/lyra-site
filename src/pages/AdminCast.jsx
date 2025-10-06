@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   createCast,
@@ -18,6 +18,7 @@ const EMPTY_FORM = {
   instagram: "",
   email: "",
   other: "",
+  image: "",
 };
 
 function buildInstagramHandle(value) {
@@ -32,11 +33,10 @@ export default function AdminCast() {
   const [loading, setLoading] = useState(true);
   const [serverStatus, setServerStatus] = useState("loading");
   const [formState, setFormState] = useState(EMPTY_FORM);
-  const [imagePreview, setImagePreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
-  const imageInputRef = useRef(null);
+  const [previewError, setPreviewError] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -65,6 +65,10 @@ export default function AdminCast() {
     };
   }, [presetCasts]);
 
+  useEffect(() => {
+    setPreviewError(false);
+  }, [formState.image]);
+
   const handleInputChange = (event) => {
     const { name, value } = event.target;
     setFormState((prev) => ({
@@ -73,47 +77,28 @@ export default function AdminCast() {
     }));
   };
 
-  const handleImageChange = (event) => {
-    const file = event.target.files && event.target.files[0];
-    setSubmitError("");
-    setSubmitSuccess("");
-    if (!file) {
-      setImagePreview("");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      setSubmitError("Lütfen bir görsel dosyası seçin.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImagePreview(reader.result);
-      }
-    };
-    reader.onerror = () => {
-      setSubmitError("Görsel okunurken bir hata oluştu.");
-    };
-    reader.readAsDataURL(file);
-  };
-
   const resetForm = () => {
     setFormState(EMPTY_FORM);
-    setImagePreview("");
     setSubmitError("");
     setSubmitSuccess("");
-    if (imageInputRef.current) {
-      imageInputRef.current.value = "";
-    }
   };
+
+  const imageUrl = formState.image.trim();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitError("");
     setSubmitSuccess("");
 
-    if (!formState.name.trim()) {
+    const name = formState.name.trim();
+
+    if (!name) {
       setSubmitError("Lütfen cast için bir isim yazın.");
+      return;
+    }
+
+    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
+      setSubmitError("Lütfen görsel için geçerli bir URL girin.");
       return;
     }
 
@@ -125,10 +110,10 @@ export default function AdminCast() {
     setSubmitting(true);
     try {
       const payload = {
-        name: formState.name,
-        role: formState.role,
-        bio: formState.bio,
-        image: imagePreview,
+        name,
+        role: formState.role.trim(),
+        bio: formState.bio.trim(),
+        image: imageUrl || undefined,
         contacts: {
           instagram: formState.instagram.trim(),
           email: formState.email.trim(),
@@ -260,20 +245,28 @@ export default function AdminCast() {
               />
             </label>
             <label className="admin-cast__upload">
-              <span>Fotoğraf</span>
+              <span>Fotoğraf URL'si</span>
               <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
+                name="image"
+                value={formState.image}
+                onChange={handleInputChange}
+                placeholder="https://.../foto.jpg"
               />
-              {imagePreview ? (
+              {imageUrl && !previewError ? (
                 <div className="admin-cast__preview">
-                  <img src={imagePreview} alt="Seçili cast görseli" />
+                  <img
+                    src={imageUrl}
+                    alt="Cast görseli önizleme"
+                    onError={() => setPreviewError(true)}
+                  />
                 </div>
               ) : (
-                <p className="admin-cast__hint">
-                  JPG veya PNG formatında 5MB altı görseller önerilir.
+                <p
+                  className={`admin-cast__hint${previewError ? " admin-cast__hint--error" : ""}`}
+                >
+                  {previewError
+                    ? "Görsel yüklenemedi. URL'yi kontrol edin."
+                    : "Bunny.net üzerindeki görselin tam URL'sini girin."}
                 </p>
               )}
             </label>

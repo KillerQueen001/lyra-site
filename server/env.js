@@ -4,7 +4,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-const ROOT_DIR = dirname(fileURLToPath(new URL("./", import.meta.url)));
+const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = resolve(SERVER_DIR, "..");
 const ENV_FILES = [".env.local", ".env"];
 
 function parseEnv(content) {

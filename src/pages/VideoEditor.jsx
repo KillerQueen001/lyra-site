@@ -36,7 +36,6 @@ function getDefaultDetails(videoId, library = videoLibrary) {
 export default function VideoEditor() {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
-  const thumbnailInputRef = useRef(null);
   const statusTimeoutRef = useRef(null);
   const videoLibraryEntries = useVideoLibraryEntries();
   const videoOptions = useMemo(() => {
@@ -60,12 +59,12 @@ export default function VideoEditor() {
     "Videonuz için açıklamayı buraya yazın."
   );
   const [ageRating, setAgeRating] = useState("all");
-  const [thumbnailPreview, setThumbnailPreview] = useState("");
-  const [thumbnailName, setThumbnailName] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [thumbnailError, setThumbnailError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState("info");
+  const normalizedThumbnailUrl = thumbnailUrl.trim();
 
   useEffect(() => {
     let cancelled = false;
@@ -94,18 +93,13 @@ export default function VideoEditor() {
       setDescription(details.description || fallback.description);
       setAgeRating(details.ageRating || fallback.ageRating);
       const thumbSrc = details.thumbnail?.src || fallback.thumbnail.src;
-      const thumbName = details.thumbnail?.name || fallback.thumbnail.name;
-      setThumbnailPreview(thumbSrc || "");
-      setThumbnailName(thumbName || "");
+      setThumbnailUrl(thumbSrc || "");
       setThumbnailError("");
       setStatusMessage("");
       setStatusTone("info");
       setLastSavedAt(
         details.updatedAt ? new Date(details.updatedAt) : fallback.updatedAt
       );
-      if (thumbnailInputRef.current) {
-        thumbnailInputRef.current.value = "";
-      }
     },
     [videoDetailsMap, videoLibraryEntries]
   );
@@ -120,10 +114,12 @@ export default function VideoEditor() {
   );
 
   const selectedVideoPoster = useMemo(() => {
-    if (thumbnailPreview) return thumbnailPreview;
-    const entry = videoLibraryEntries[selectedVideoId];
-    return entry?.poster || "";
-  }, [selectedVideoId, thumbnailPreview, videoLibraryEntries]);
+    if (normalizedThumbnailUrl) return normalizedThumbnailUrl;
+    const entry = videoLibraryEntries?.[selectedVideoId];
+    if (entry?.thumbnail?.src) return entry.thumbnail.src;
+    if (entry?.poster) return entry.poster;
+    return entry?.base?.poster || "";
+  }, [selectedVideoId, normalizedThumbnailUrl, videoLibraryEntries]);
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -184,31 +180,9 @@ export default function VideoEditor() {
       teardown();
     };
   }, [selectedVideoSource]);
-  const handleThumbnailChange = (event) => {
-    const file = event.target.files && event.target.files[0];
+  const handleThumbnailUrlChange = (event) => {
+    setThumbnailUrl(event.target.value);
     setThumbnailError("");
-    if (!file) {
-      setThumbnailPreview("");
-      setThumbnailName("");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      setThumbnailError("Lütfen bir görsel dosyası seçin.");
-      setThumbnailPreview("");
-      setThumbnailName("");
-      return;
-    }
-    setThumbnailName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setThumbnailPreview(reader.result);
-      }
-    };
-    reader.onerror = () => {
-      setThumbnailError("Thumbnail yüklenirken bir hata oluştu.");
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSave = async () => {
@@ -217,14 +191,24 @@ export default function VideoEditor() {
       clearTimeout(statusTimeoutRef.current);
       statusTimeoutRef.current = null;
     }
+    const trimmedThumbnail = normalizedThumbnailUrl;
+    if (trimmedThumbnail && !/^https?:\/\//i.test(trimmedThumbnail)) {
+      setThumbnailError("Lütfen geçerli bir URL girin.");
+      setStatusTone("error");
+      setStatusMessage("Thumbnail adresi geçersiz.");
+      return;
+    }
     setIsSaving(true);
     setStatusTone("info");
     setStatusMessage("Kaydediliyor...");
+    const derivedName = trimmedThumbnail
+      ? trimmedThumbnail.split("/").pop()?.split("?")[0] || ""
+      : "";
     const result = await saveVideoDetails(selectedVideoId, {
       title,
       description,
       ageRating,
-      thumbnail: { src: thumbnailPreview, name: thumbnailName },
+      thumbnail: { src: trimmedThumbnail, name: derivedName },
     });
     if (result.ok && result.data) {
       setVideoDetailsMap((prev) => ({
@@ -358,24 +342,24 @@ export default function VideoEditor() {
                 <label className="metadata-thumbnail">
                   <span>Thumbnail</span>
                   <input
-                    ref={thumbnailInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleThumbnailChange}
+                    value={thumbnailUrl}
+                    onChange={handleThumbnailUrlChange}
+                    placeholder="https://.../kapak.jpg"
                   />
                   {thumbnailError ? (
                     <p className="metadata-hint metadata-hint--error">{thumbnailError}</p>
                   ) : (
                     <p className="metadata-hint">
-                      JPG veya PNG formatında bir görsel yükleyebilirsiniz.
+                      Bunny.net üzerindeki thumbnail adresini girin.
                     </p>
                   )}
-                  {thumbnailPreview && (
+                  {normalizedThumbnailUrl && !thumbnailError && (
                     <div className="thumbnail-preview">
-                      <img src={thumbnailPreview} alt="Seçili thumbnail" />
-                      {thumbnailName && (
-                        <span className="thumbnail-name">{thumbnailName}</span>
-                      )}
+                      <img
+                        src={normalizedThumbnailUrl}
+                        alt="Thumbnail önizleme"
+                        onError={() => setThumbnailError("Görsel yüklenemedi. URL'yi kontrol edin.")}
+                      />
                     </div>
                   )}
                 </label>

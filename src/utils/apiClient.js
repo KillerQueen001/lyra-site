@@ -7,20 +7,38 @@ function sanitizeBase(url) {
   return trimmed.replace(/\/$/, "");
 }
 
+function normalizeBase(url, { appendApiPath = false } = {}) {
+  const sanitized = sanitizeBase(url);
+  if (!sanitized) return null;
+  const cleaned = sanitized.replace(/\/$/, "");
+  if (appendApiPath && !/\/api$/i.test(cleaned)) {
+    return `${cleaned}/api`;
+  }
+  return cleaned;
+}
+
 export function getApiBase() {
   if (cachedBase) return cachedBase;
 
   let envUrl;
+  let appendApiPath = false;
   try {
     if (typeof import.meta !== "undefined" && import.meta.env) {
-      envUrl =
-        import.meta.env.VITE_TIMELINE_API_BASE ?? import.meta.env.VITE_API_BASE;
+      const env = import.meta.env;
+      if (env.VITE_TIMELINE_API_BASE) {
+        envUrl = env.VITE_TIMELINE_API_BASE;
+      } else if (env.VITE_API_BASE) {
+        envUrl = env.VITE_API_BASE;
+      } else if (env.VITE_API_URL) {
+        envUrl = env.VITE_API_URL;
+        appendApiPath = true;
+      }
     }
   } catch {
     envUrl = undefined;
   }
 
-  const fromEnv = sanitizeBase(envUrl);
+  const fromEnv = normalizeBase(envUrl, { appendApiPath });
   if (fromEnv) {
     cachedBase = fromEnv;
     return cachedBase;

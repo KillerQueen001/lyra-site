@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useVideoLibrary } from "../hooks/useVideoLibrary";
 import { useGroups } from "../hooks/useGroups";
 import {
@@ -6,8 +6,6 @@ import {
   isValidHlsUrl,
 } from "../utils/videoLibraryApi";
 import { slugify } from "../utils/slugify";
-import { uploadAsset } from "../utils/uploadApi";
-import { useUploadStatus } from "../hooks/useUploadStatus";
 import "./AdminVideoLibrary.css";
 
 const EMPTY_FORM = {
@@ -65,19 +63,8 @@ export default function AdminVideoLibrary() {
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
   const [deletingId, setDeletingId] = useState("");
-  const [posterUpload, setPosterUpload] = useState({ status: "idle", message: "" });
-  const posterInputRef = useRef(null);
-  const {
-    status: uploadStatus,
-    available: isUploadAvailable,
-    message: uploadStatusMessage,
-    reason: uploadStatusReason,
-    error: uploadStatusError,
-    reload: reloadUploadStatus,
-  } = useUploadStatus()
+  const [posterError, setPosterError] = useState(false);
   const isGroupsLoading = groupsStatus === "idle" || groupsStatus === "loading";
-  const isPosterUploading = posterUpload.status === "uploading";
-  const isUploadReady = uploadStatus === "ready" && isUploadAvailable;
 
   const entries = useMemo(() => {
     return Object.entries(library || {}).map(([id, entry]) => ({
@@ -110,6 +97,12 @@ export default function AdminVideoLibrary() {
     });
   }, [entries]);
 
+  const posterUrl = form.poster.trim();
+
+  useEffect(() => {
+    setPosterError(false);
+  }, [posterUrl]);
+
   const handleInputChange = (event) => {
     const { name, value } = event.target;
     setSubmitError("");
@@ -138,65 +131,8 @@ export default function AdminVideoLibrary() {
     setIsIdDirty(false);
     setSubmitError("");
     setSubmitSuccess("");
-        setPosterUpload({ status: "idle", message: "" });
+    setPosterError(false);
   };
-
-  const updatePosterStatus = (status, message = "") => {
-    setPosterUpload({ status, message });
-  };
-
-  const resolveVideoSlug = () => {
-    const slugSource = form.videoId.trim() || form.title.trim();
-    const fallback = form.stream.trim();
-    const slug = slugify(slugSource || fallback);
-    if (slug) return slug;
-    return `video-${Date.now().toString(36)}`;
-  };
-
-  const handlePosterUpload = async (input) => {
-    const file = input?.files?.[0];
-    if (!file) return;
-    input.value = "";
-    if (!isUploadReady) {
-      const message =
-        uploadStatus === "loading"
-          ? "Bunny Storage hazır olana kadar bekleyin."
-          : uploadStatusMessage ||
-            uploadStatusError?.message ||
-            "Bunny Storage erişilemiyor. Lütfen bağlantıyı kontrol edin.";
-      updatePosterStatus("error", message);
-      return;
-    }
-    updatePosterStatus("uploading", "Yükleniyor…");
-    try {
-      const slug = resolveVideoSlug();
-      const result = await uploadAsset(file, {
-        folder: `videos/${slug}`,
-        fileName: `poster-${Date.now().toString(36)}`,
-      });
-      setForm((prev) => ({
-        ...prev,
-        poster: result.url || prev.poster,
-      }));
-      updatePosterStatus("success", "Poster Bunny CDN'e yüklendi.");
-      setSubmitError("");
-    } catch (error) {
-      updatePosterStatus("error", error.message || "Poster yüklenemedi.");
-    }
-  };
-
-  const posterStatusMessage = posterUpload.message
-    ? posterUpload.message
-    : uploadStatus === "loading"
-    ? "Bunny Storage durumu kontrol ediliyor…"
-    : uploadStatus === "error"
-    ? uploadStatusError?.message || uploadStatusMessage || "Bunny Storage durumuna ulaşılamadı."
-    : !isUploadAvailable
-    ? uploadStatusMessage ||
-      (uploadStatusReason === "BUNNY_STORAGE_NOT_CONFIGURED"
-        ? "Bunny Storage yapılandırması eksik görünüyor."
-        : "Bunny Storage şu anda kullanılamıyor.")
-    : "Poster görselini Bunny Storage'a yükleyebilirsiniz.";
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -239,11 +175,6 @@ export default function AdminVideoLibrary() {
       setSubmitError(
         "Seçilen grup bulunamadı. Listeyi yenileyin ve tekrar deneyin."
       );
-      return;
-    }
-
-    if (isPosterUploading) {
-      setSubmitError("Poster yüklemesi tamamlanana kadar bekleyin.");
       return;
     }
 
@@ -381,7 +312,7 @@ export default function AdminVideoLibrary() {
                   <button
                     type="button"
                     onClick={() => reloadGroups().catch(() => {})}
-                    disabled={submitting || isGroupsLoading || isPosterUploading}
+                    disabled={submitting || isGroupsLoading}
                   >
                     Yenile
                   </button>
@@ -405,41 +336,21 @@ export default function AdminVideoLibrary() {
                   onChange={handleInputChange}
                   placeholder="https://.../poster.jpg"
                 />
-                <small className="admin-video__upload">
-                  <button
-                    type="button"
-                    onClick={() => posterInputRef.current?.click()}
-                    disabled={
-                      submitting ||
-                      isPosterUploading ||
-                      uploadStatus === "loading" ||
-                      uploadStatus === "error" ||
-                      !isUploadAvailable
-                    }
-                  >
-                    Bunny'e yükle
-                  </button>
-                  <input
-                    ref={posterInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="admin-video__upload-input"
-                    onChange={(event) => handlePosterUpload(event.target)}
-                  />
-                  <span
-                    className={`admin-video__upload-status admin-video__upload-status--${posterUpload.status}`}
-                  >
-                    {posterStatusMessage}
-                  </span>
-                  {uploadStatus !== "ready" ? (
-                    <button
-                      type="button"
-                      onClick={() => reloadUploadStatus().catch(() => {})}
-                      disabled={submitting || isPosterUploading}
-                    >
-                      Durumu yenile
-                    </button>
-                  ) : null}
+                {posterUrl && !posterError ? (
+                  <div className="admin-video__poster-preview">
+                    <img
+                      src={posterUrl}
+                      alt="Poster önizleme"
+                      onError={() => setPosterError(true)}
+                    />
+                  </div>
+                ) : null}
+                <small
+                  className={`admin-video__hint${posterError ? " admin-video__hint--error" : ""}`}
+                >
+                  {posterError
+                    ? "Poster yüklenemedi. URL'yi kontrol edin."
+                    : "Bunny.net üzerindeki görsel URL'sini girin."}
                 </small>
               </label>
               <label className="admin-video__span-2">
@@ -470,7 +381,7 @@ export default function AdminVideoLibrary() {
                 <button
                   type="button"
                   onClick={() => reloadGroups().catch(() => {})}
-                  disabled={isGroupsLoading || submitting || isPosterUploading}
+                  disabled={isGroupsLoading || submitting}
                 >
                   Tekrar dene
                 </button>
@@ -478,14 +389,14 @@ export default function AdminVideoLibrary() {
             ) : null}
 
             <div className="admin-video__actions">
-              <button type="submit" disabled={submitting || isPosterUploading}>
+              <button type="submit" disabled={submitting}>
                 {submitting ? "Kaydediliyor..." : "Video Ekle"}
               </button>
               <button
                 type="button"
                 className="admin-video__secondary"
                 onClick={resetForm}
-                disabled={submitting  || isPosterUploading}
+                disabled={submitting}
               >
                 Temizle
               </button>
